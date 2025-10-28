@@ -37,6 +37,15 @@ namespace RimeSharp
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate bool DestroySession(RimeSessionId sessionId);
+    
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate bool ProcessKey(RimeSessionId sessionId, int keyCode, int mask);
+    
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate bool CommitComposition(RimeSessionId sessionId);
+    
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void ClearComposition(RimeSessionId sessionId);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate bool GetCommit(RimeSessionId sessionId, ref RimeCommit commit);
@@ -134,7 +143,7 @@ namespace RimeSharp
         [MarshalAs(UnmanagedType.LPUTF8Str)] string key);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate bool SelectCandidate(RimeSessionId sessionId, int index);
+    internal delegate bool ManipulateCandidate(RimeSessionId sessionId, int index);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate bool CandidateListFromIndex(RimeSessionId sessionId,
@@ -189,9 +198,14 @@ namespace RimeSharp
 
         public void JoinMaintenanceThread() => _api.JoinMaintenanceThread();
 
+        public bool SyncUserData() => _api.SyncUserData();
+
         public RimeSessionId CreateSession() => _api.CreateSession();
 
         public bool DestroySession(RimeSessionId sessionId) => _api.DestroySession(sessionId);
+
+        public bool ProcessKey(RimeSessionId sessionId, int keyCode, int mask)
+            => _api.ProcessKey(sessionId, keyCode, mask);
 
         public RimeCommit GetCommit(RimeSessionId sessionId)
         {
@@ -341,6 +355,12 @@ namespace RimeSharp
 
         public string GetStateLabel(RimeSessionId sessionId, string optionName, bool state, bool abbreviated = false)
             => _api.GetStateLabelAbbreviated(sessionId, optionName, state, abbreviated).AsString();
+        
+        public bool DeleteCandidate(RimeSessionId sessionId, int index, bool paged = false)
+            => paged ? _api.DeleteCandidateOnCurrentPage(sessionId, index) : _api.DeleteCandidate(sessionId, index);
+        
+        public bool HighlightCandidate(RimeSessionId sessionId, int index, bool paged = false)
+            => paged ? _api.HighlightCandidateOnCurrentPage(sessionId, index) : _api.HighlightCandidate(sessionId, index);
 
         public bool ChangePage(RimeSessionId sessionId, bool backward)
             => _api.ChangePage(sessionId, backward);
@@ -369,7 +389,8 @@ namespace RimeSharp
         public IntPtr Deploy; // unused
         public IntPtr DeploySchema; // unused
         public IntPtr DeployConfigFile; // unused
-        public IntPtr SyncUserData; // unused
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public DBool SyncUserData;
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public CreateSession CreateSession;
         public IntPtr FindSession; // unused
@@ -377,9 +398,12 @@ namespace RimeSharp
         public DestroySession DestroySession;
         public IntPtr CleanupStaleSessions; // unused
         public IntPtr CleanupAllSessions; // unused
-        public IntPtr ProcessKey;
-        public IntPtr CommitComposition;
-        public IntPtr ClearComposition;
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public ProcessKey ProcessKey;
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public CommitComposition CommitComposition;
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public ClearComposition ClearComposition;
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public GetCommit GetCommit;
         [MarshalAs(UnmanagedType.FunctionPtr)]
@@ -457,11 +481,11 @@ namespace RimeSharp
         public IntPtr GetInput;
         public IntPtr getCaretPos;
         [MarshalAs(UnmanagedType.FunctionPtr)]
-        public SelectCandidate SelectCandidate;
+        public ManipulateCandidate SelectCandidate;
         public IntPtr GetVersion;
         public IntPtr SetCaretPos;
         [MarshalAs(UnmanagedType.FunctionPtr)]
-        public SelectCandidate SelectCandidateOnCurrentPage;
+        public ManipulateCandidate SelectCandidateOnCurrentPage;
         public IntPtr CandidateListBegin; // unused
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public CandidateListNext CandidateListNext;
@@ -477,8 +501,10 @@ namespace RimeSharp
         private readonly IntPtr _contextProto; // deprecated
         private readonly IntPtr _statusProto; // deprecated
         public IntPtr GetStateLabel; // unused
-        public IntPtr DeleteCandidate;
-        public IntPtr DeleteCandidateOnCurrentPage;
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public ManipulateCandidate DeleteCandidate;
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public ManipulateCandidate DeleteCandidateOnCurrentPage;
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public GetStateLabelAbbr GetStateLabelAbbreviated;
         public IntPtr SetInput;
@@ -487,8 +513,10 @@ namespace RimeSharp
         public IntPtr GetPrebuiltDataDirS;
         public IntPtr GetStagingDirS;
         public IntPtr GetSyncDirS;
-        public IntPtr HighlightCandidate;
-        public IntPtr HighlightCandidateOnCurrentPage;
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public ManipulateCandidate HighlightCandidate;
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public ManipulateCandidate HighlightCandidateOnCurrentPage;
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public ChangePage ChangePage;
     }
