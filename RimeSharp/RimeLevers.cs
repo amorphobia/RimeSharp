@@ -40,61 +40,30 @@ namespace RimeSharp
             _levers = Marshal.PtrToStructure<RimeLeversAPI>(apiPtr);
         }
 
-        public class CustomSettings : SafeHandle
-        {
-            protected CustomSettings(IntPtr ptr) : base(ptr, true) { }
-            public CustomSettings(string configId, string generatorId) :
-                base(Instance()._levers.CustomSettingsInit(configId, generatorId), true)
-            { }
-
-            public override bool IsInvalid => handle == IntPtr.Zero;
-
-            public bool LoadSettings() => Instance()._levers.LoadSettings(handle);
-
-            public bool SaveSettings() => Instance()._levers.SaveSettings(handle);
-
-            protected override bool ReleaseHandle()
-            {
-                Instance()._levers.CustomSettingsDestroy(handle);
-                return true;
-            }
-        }
-
-        public class SwitcherSettings() : CustomSettings(Instance()._levers.SwitcherSettingsInit())
-        {
-            public override bool IsInvalid => handle == IntPtr.Zero;
-
-            private RimeSchemaListItem[] GetSchemaList(SchemaListAccess access)
-            {
-                if (!access(handle, out var list)) return [];
-                var size = Marshal.SizeOf<RimeSchemaListItem>();
-                var items = new RimeSchemaListItem[(int)list.Size];
-                for (var i = 0; i < (int)list.Size; ++i)
-                {
-                    var ptr = IntPtr.Add(list.List, i * size);
-                    items[i] = Marshal.PtrToStructure<RimeSchemaListItem>(ptr);
-                }
-                Instance()._levers.SchemaListDestroy(ref list);
-                return items;
-            }
-
-            public RimeSchemaListItem[] GetAvailableSchemaList()
-                => GetSchemaList(Instance()._levers.GetAvailableSchemaList);
-
-            public RimeSchemaListItem[] GetSelectedSchemaList()
-                => GetSchemaList(Instance()._levers.GetSelectedSchemaList);
-
-            public bool SelectSchemas(string[] schemaIdList)
-                => Instance()._levers.SelectSchemas(handle, schemaIdList, schemaIdList.Length);
-
-            protected override bool ReleaseHandle()
-            {
-                Instance()._levers.CustomSettingsDestroy(handle);
-                return true;
-            }
-        }
-
         public static RimeLevers Instance() => s_instance.Value;
+
+        internal IntPtr CustomSettingsInit(string configId, string generatorId) =>
+            _levers.CustomSettingsInit(configId, generatorId);
+
+        internal void CustomSettingsDestroy(IntPtr ptr) => _levers.CustomSettingsDestroy(ptr);
+
+        internal bool LoadSettings(IntPtr ptr) => _levers.LoadSettings(ptr);
+
+        internal bool SaveSettings(IntPtr ptr) => _levers.SaveSettings(ptr);
+
+        internal IntPtr SwitcherSettingsInit() => _levers.SwitcherSettingsInit();
+
+        internal bool GetAvailableSchemaList(IntPtr ptr, out RimeSchemaList list)
+            => _levers.GetAvailableSchemaList(ptr, out list);
+        
+        internal bool GetSelectedSchemaList(IntPtr ptr, out RimeSchemaList list)
+            => _levers.GetAvailableSchemaList(ptr, out list);
+        
+        internal void SchemaListDestroy(ref RimeSchemaList list)
+            => _levers.SchemaListDestroy(ref list);
+
+        internal bool SelectSchemas(IntPtr ptr, in string[] schemaIdList, int count)
+            => _levers.SelectSchemas(ptr, schemaIdList, count);
     }
 
     [StructLayout(LayoutKind.Sequential)]

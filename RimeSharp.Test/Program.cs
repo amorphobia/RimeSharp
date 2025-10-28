@@ -114,7 +114,7 @@ namespace RimeSharp.Test
             }
             if (line == "print available schemas")
             {
-                using var swicher = new RimeLevers.SwitcherSettings();
+                using var swicher = new RimeSwitcherSettings();
                 swicher.LoadSettings();
                 var list = swicher.GetAvailableSchemaList();
                 Console.WriteLine("available schemas:");
@@ -126,9 +126,9 @@ namespace RimeSharp.Test
             }
             if (line == "print selected schemas")
             {
-                using var swicher = new RimeLevers.SwitcherSettings();
-                swicher.LoadSettings();
-                var list = swicher.GetSelectedSchemaList();
+                using var switcher = new RimeSwitcherSettings();
+                switcher.LoadSettings();
+                var list = switcher.GetSelectedSchemaList();
                 Console.WriteLine("selected schemas:");
                 for (var i = 0; i < list.Length; ++i)
                 {
