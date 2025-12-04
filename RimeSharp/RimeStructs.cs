@@ -27,55 +27,55 @@ namespace RimeSharp
         public string UserDataDir
         {
             get => UTF8Marshal.PtrToStringUTF8(_userDataDir);
-            set => _sharedDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
+            set => _userDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
         }
         
         public string DistributionName
         {
             get => UTF8Marshal.PtrToStringUTF8(_distributionName);
-            set => _sharedDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
+            set => _distributionName = UTF8Marshal.StringToHGlobalUTF8(value);
         }
         
         public string DistributionCodeName
         {
             get => UTF8Marshal.PtrToStringUTF8(_distributionCodeName);
-            set => _sharedDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
+            set => _distributionCodeName = UTF8Marshal.StringToHGlobalUTF8(value);
         }
         
         public string DistributionVersion
         {
             get => UTF8Marshal.PtrToStringUTF8(_distributionVersion);
-            set => _sharedDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
+            set => _distributionVersion = UTF8Marshal.StringToHGlobalUTF8(value);
         }
         
         public string AppName
         {
             get => UTF8Marshal.PtrToStringUTF8(_appName);
-            set => _sharedDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
+            set => _appName = UTF8Marshal.StringToHGlobalUTF8(value);
         }
         
         public string Modules
         {
             get => UTF8Marshal.PtrToStringUTF8(_modules);
-            set => _sharedDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
+            set => _modules = UTF8Marshal.StringToHGlobalUTF8(value);
         }
         
         public string LogDir
         {
             get => UTF8Marshal.PtrToStringUTF8(_logDir);
-            set => _sharedDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
+            set => _logDir = UTF8Marshal.StringToHGlobalUTF8(value);
         }
         
         public string PrebuiltDataDir
         {
             get => UTF8Marshal.PtrToStringUTF8(_prebuiltDataDir);
-            set => _sharedDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
+            set => _prebuiltDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
         }
         
         public string StagingDir
         {
             get => UTF8Marshal.PtrToStringUTF8(_stagingDir);
-            set => _sharedDataDir = UTF8Marshal.StringToHGlobalUTF8(value);
+            set => _stagingDir = UTF8Marshal.StringToHGlobalUTF8(value);
         }
 
         public RimeTraits()
