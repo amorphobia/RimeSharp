@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RimeSharp", "RimeSharp\Rime
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RimeSharp.Test", "RimeSharp.Test\RimeSharp.Test.csproj", "{D0B0625A-3B14-4FD1-8F1F-2E1DE22F3B58}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RimeSharp.PowerShell", "RimeSharp.PowerShell\RimeSharp.PowerShell.csproj", "{6F8D6C48-E0D4-4F86-9E1E-26157D61B5E4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{D0B0625A-3B14-4FD1-8F1F-2E1DE22F3B58}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D0B0625A-3B14-4FD1-8F1F-2E1DE22F3B58}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D0B0625A-3B14-4FD1-8F1F-2E1DE22F3B58}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F8D6C48-E0D4-4F86-9E1E-26157D61B5E4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F8D6C48-E0D4-4F86-9E1E-26157D61B5E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F8D6C48-E0D4-4F86-9E1E-26157D61B5E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F8D6C48-E0D4-4F86-9E1E-26157D61B5E4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

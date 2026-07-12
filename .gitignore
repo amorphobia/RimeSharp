@@ -39,3 +39,6 @@ _ReSharper*/
 _NCrunch_LibGit2Sharp/
 artifacts/
 worktree.playlist
+
+shared/
+user/
