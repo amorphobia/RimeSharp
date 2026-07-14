@@ -229,10 +229,8 @@ RimeSharp.PowerShell/
 │   ├── RimeSession.cs          # 会话对象
 │   └── RimeResponse.cs         # Send-RimeKey 的返回对象
 ├── Cmdlets/
-│   ├── StartRimeCmdlet.cs
-│   ├── StopRimeCmdlet.cs
-│   ├── SendRimeKeyCmdlet.cs
-│   ├── SendRimeKeyEventCmdlet.cs
+│   ├── LifecycleCmdlets.cs     # Start-Rime, Stop-Rime
+│   ├── KeyCmdlets.cs           # Send-RimeKey, Send-RimeKeyEvent
 │   ├── QueryCmdlets.cs         # Get-RimeCommit, Get-RimeContext, Get-RimeStatus
 │   ├── CandidateCmdlets.cs     # Select-, Remove-RimeCandidate, Invoke-RimeHighlight
 │   ├── PageCmdlet.cs           # Set-RimePage
