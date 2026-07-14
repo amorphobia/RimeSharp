@@ -12,6 +12,8 @@
 - **Pipeline 承载 session**：`Start-Rime` 输出 `[RimeSession]` 对象，所有操作 cmdlet 通过 `-Session` 参数接收
 - **单次调用返回完整渲染所需数据**：输入法前端在每个按键后需要 commit text + status + context 来渲染 UI，`Send-RimeKey` 一次性返回全部
 - **错误走 ErrorRecord**：不与 console 耦合，让调用方通过 `-ErrorAction` 决定如何处理
+- **Verb 类名为复数**：PowerShell SDK 的动词常量类名均以 `s` 结尾，如 `VerbsCommunications`（而非 `VerbsCommunication`）、`VerbsCommon`、`VerbsLifecycle`。声明 `[Cmdlet]` 属性时注意类名不可省略末尾的 `s`。
+
 
 ## 对象模型
 
@@ -24,6 +26,7 @@ Start-Rime → [RimeSession]
                 │     ├── Status  : RimeStatus (schema, ascii/trad/simp flags, composing...)
                 │     └── Context : RimeContext (preedit, candidates, menu page info)
                 │
+                ├── Send-RimeKeyEvent -KeyCode <int> [-Mask <int>] → bool
                 ├── Get-RimeCommit → [RimeCommit]
                 ├── Get-RimeContext → [RimeContext]
                 ├── Get-RimeStatus  → [RimeStatus]
@@ -100,6 +103,18 @@ Send-RimeKey [-Sequence] <string> [[-Session] <RimeSession>] [<CommonParameters>
 返回 `[RimeResponse]`（commit + status + context），前端据此渲染 UI。
 
 `-Sequence` 支持 position 0，所以可以直接 `$session | Send-RimeKey nihao`。
+
+#### `Send-RimeKeyEvent`
+
+```
+Send-RimeKeyEvent [-Session] <RimeSession> [-KeyCode] <int> [[-Mask] <int>] [<CommonParameters>]
+```
+
+发送单个原始按键事件。内部调用 `ProcessKey`（keyCode + 修饰键 mask）。
+返回 `bool` 表示该键是否被引擎处理。
+与 `Send-RimeKey` 不同，此 cmdlet 不读取 commit/status/context，适用于调用方自行管理渲染。
+
+`-Mask` 为修饰键掩码（如 0 = 无修饰，可按位组合），默认 0。
 
 ### 查询状态
 
@@ -217,6 +232,7 @@ RimeSharp.PowerShell/
 │   ├── StartRimeCmdlet.cs
 │   ├── StopRimeCmdlet.cs
 │   ├── SendRimeKeyCmdlet.cs
+│   ├── SendRimeKeyEventCmdlet.cs
 │   ├── QueryCmdlets.cs         # Get-RimeCommit, Get-RimeContext, Get-RimeStatus
 │   ├── CandidateCmdlets.cs     # Select-, Remove-RimeCandidate, Invoke-RimeHighlight
 │   ├── PageCmdlet.cs           # Set-RimePage
@@ -229,7 +245,7 @@ RimeSharp.PowerShell/
 | 阶段 | Cmdlet | 原因 |
 |---|---|---|
 | 1 | `Start-Rime` + `Stop-Rime` + `RimeSession` + `RimeResponse` | 基础设施，没有它们其他 cmdlet 无法存在 |
-| 2 | `Send-RimeKey` + `Get-RimeContext` + `Get-RimeStatus` + `Get-RimeCommit` | 核心输入循环，前端最基本需求 |
+| 2 | `Send-RimeKey` + `Send-RimeKeyEvent` + `Get-RimeContext` + `Get-RimeStatus` + `Get-RimeCommit` | 核心输入循环，前端最基本需求 |
 | 3 | `Select-RimeCandidate` + `Set-RimePage` | 选词翻页闭环 |
 | 4 | `Get-RimeSchema` + `Set-RimeSchema` | 方案切换 |
 | 5 | `Get-RimeOption` + `Set-RimeOption` | 开关控制 |
