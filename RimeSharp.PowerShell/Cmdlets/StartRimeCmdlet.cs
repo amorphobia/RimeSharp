@@ -1,13 +1,12 @@
 using System.Management.Automation;
-using RimeSharp;
 
 namespace RimeSharp.PowerShell.Cmdlets;
 
 /// <summary>
-/// Initialize the RIME engine and return a session ID.
+/// Initialize the RIME engine and return a <see cref="RimeSession"/> for pipeline binding.
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "Rime")]
-[OutputType(typeof(UIntPtr))]
+[OutputType(typeof(RimeSession))]
 public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
 {
     private Rime? _rime;
@@ -22,6 +21,30 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
     public string UserDataDir { get; set; } = "user";
 
     [Parameter]
+    public string? DistributionName { get; set; }
+
+    [Parameter]
+    public string? DistributionCodeName { get; set; }
+
+    [Parameter]
+    public string? DistributionVersion { get; set; }
+
+    [Parameter]
+    public string? Modules { get; set; }
+
+    [Parameter]
+    public int MinLogLevel { get; set; }
+
+    [Parameter]
+    public string? LogDir { get; set; }
+
+    [Parameter]
+    public string? PrebuiltDataDir { get; set; }
+
+    [Parameter]
+    public string? StagingDir { get; set; }
+
+    [Parameter]
     public SwitchParameter PassThru { get; set; }
 
     protected override void BeginProcessing()
@@ -34,6 +57,15 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
             SharedDataDir = SharedDataDir,
             UserDataDir = UserDataDir,
         };
+
+        if (DistributionName is not null) traits.DistributionName = DistributionName;
+        if (DistributionCodeName is not null) traits.DistributionCodeName = DistributionCodeName;
+        if (DistributionVersion is not null) traits.DistributionVersion = DistributionVersion;
+        if (Modules is not null) traits.Modules = Modules;
+        if (LogDir is not null) traits.LogDir = LogDir;
+        if (PrebuiltDataDir is not null) traits.PrebuiltDataDir = PrebuiltDataDir;
+        if (StagingDir is not null) traits.StagingDir = StagingDir;
+        traits.MinLogLevel = MinLogLevel;
 
         _rime.Setup(ref traits);
         _rime.Initialize(ref traits);
@@ -52,7 +84,14 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
             return;
         }
 
-        WriteObject(sessionId);
+        var session = new RimeSession(sessionId);
+
+        if (PassThru)
+        {
+            SessionState.PSVariable.Set("global:RimeDefaultSession", session);
+        }
+
+        WriteObject(session);
     }
 
     protected override void StopProcessing()
