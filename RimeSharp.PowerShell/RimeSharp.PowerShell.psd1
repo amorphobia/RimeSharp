@@ -20,6 +20,8 @@
         'Get-RimeStatus'
         'Select-RimeCandidate'
         'Set-RimePage'
+        'Get-RimeSchema'
+        'Set-RimeSchema'
     )
     VariablesToExport    = @()
     AliasesToExport      = @()
