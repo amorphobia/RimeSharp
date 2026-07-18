@@ -25,3 +25,15 @@ foreach ($config in @('Release', 'Debug')) {
 if (-not $loaded) {
     throw "RimeSharp.PowerShell.dll not found. Run build.ps1 first."
 }
+
+Export-ModuleMember -Cmdlet @(
+    'Start-Rime'
+    'Stop-Rime'
+    'Send-RimeKey'
+    'Send-RimeKeyEvent'
+    'Get-RimeCommit'
+    'Get-RimeContext'
+    'Get-RimeStatus'
+    'Select-RimeCandidate'
+    'Set-RimePage'
+)

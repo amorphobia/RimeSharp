@@ -10,7 +10,17 @@
     RequiredAssemblies   = @()
     RequiredModules      = @()
     FunctionsToExport    = @()
-    CmdletsToExport      = @()
+    CmdletsToExport      = @(
+        'Start-Rime'
+        'Stop-Rime'
+        'Send-RimeKey'
+        'Send-RimeKeyEvent'
+        'Get-RimeCommit'
+        'Get-RimeContext'
+        'Get-RimeStatus'
+        'Select-RimeCandidate'
+        'Set-RimePage'
+    )
     VariablesToExport    = @()
     AliasesToExport      = @()
     PrivateData          = @{

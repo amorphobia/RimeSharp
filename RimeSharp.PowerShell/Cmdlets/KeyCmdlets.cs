@@ -14,14 +14,13 @@ public sealed class SendRimeKeyCmdlet : PSCmdlet, IDisposable
     private Rime? _rime;
 
     [Parameter(
-        Position = 0,
-        Mandatory = true,
+        Position = 1,
         ValueFromPipeline = true
     )]
-    public RimeSession Session { get; set; } = null!;
+    public RimeSession? Session { get; set; }
 
     [Parameter(
-        Position = 1,
+        Position = 0,
         Mandatory = true
     )]
     public string Sequence { get; set; } = "";
@@ -29,11 +28,20 @@ public sealed class SendRimeKeyCmdlet : PSCmdlet, IDisposable
     protected override void BeginProcessing()
     {
         _rime = Rime.Instance();
+        Session ??= SessionState.PSVariable.GetValue("global:RimeDefaultSession") as RimeSession;
     }
 
     protected override void ProcessRecord()
     {
         if (_rime is null) return;
+        if (Session is null)
+        {
+            var ex = new InvalidOperationException(
+                "No RIME session specified. Pipe a session from Start-Rime or use -Session.");
+            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionMissing",
+                ErrorCategory.InvalidOperation, null));
+            return;
+        }
 
         _rime.SimulateKeySequence(Session.Id, Sequence);
 
@@ -67,29 +75,37 @@ public sealed class SendRimeKeyEventCmdlet : PSCmdlet, IDisposable
     private Rime? _rime;
 
     [Parameter(
-        Position = 0,
-        Mandatory = true,
+        Position = 2,
         ValueFromPipeline = true
     )]
-    public RimeSession Session { get; set; } = null!;
+    public RimeSession? Session { get; set; }
 
     [Parameter(
-        Position = 1,
+        Position = 0,
         Mandatory = true
     )]
     public int KeyCode { get; set; }
 
-    [Parameter(Position = 2)]
+    [Parameter(Position = 1)]
     public int Mask { get; set; }
 
     protected override void BeginProcessing()
     {
         _rime = Rime.Instance();
+        Session ??= SessionState.PSVariable.GetValue("global:RimeDefaultSession") as RimeSession;
     }
 
     protected override void ProcessRecord()
     {
         if (_rime is null) return;
+        if (Session is null)
+        {
+            var ex = new InvalidOperationException(
+                "No RIME session specified. Pipe a session from Start-Rime or use -Session.");
+            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionMissing",
+                ErrorCategory.InvalidOperation, null));
+            return;
+        }
 
         var handled = _rime.ProcessKey(Session.Id, KeyCode, Mask);
         WriteObject(handled);

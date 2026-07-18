@@ -116,19 +116,27 @@ public sealed class StopRimeCmdlet : PSCmdlet, IDisposable
 
     [Parameter(
         Position = 0,
-        Mandatory = true,
         ValueFromPipeline = true
     )]
-    public RimeSession Session { get; set; } = null!;
+    public RimeSession? Session { get; set; }
 
     protected override void BeginProcessing()
     {
         _rime = Rime.Instance();
+        Session ??= SessionState.PSVariable.GetValue("global:RimeDefaultSession") as RimeSession;
     }
 
     protected override void ProcessRecord()
     {
         if (_rime is null) return;
+        if (Session is null)
+        {
+            var ex = new InvalidOperationException(
+                "No RIME session specified. Pipe a session from Start-Rime or use -Session.");
+            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionMissing",
+                ErrorCategory.InvalidOperation, null));
+            return;
+        }
 
         if (!_rime.DestroySession(Session.Id))
         {
@@ -137,6 +145,13 @@ public sealed class StopRimeCmdlet : PSCmdlet, IDisposable
             ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionInvalid",
                 ErrorCategory.InvalidArgument, Session));
             return;
+        }
+
+        var defaultSession = SessionState.PSVariable.GetValue(
+            "global:RimeDefaultSession") as RimeSession;
+        if (defaultSession?.Id == Session.Id)
+        {
+            SessionState.PSVariable.Remove("global:RimeDefaultSession");
         }
     }
 
