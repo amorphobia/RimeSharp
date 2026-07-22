@@ -22,6 +22,8 @@
         'Set-RimePage'
         'Get-RimeSchema'
         'Set-RimeSchema'
+        'Get-RimeOption'
+        'Set-RimeOption'
     )
     VariablesToExport    = @()
     AliasesToExport      = @()

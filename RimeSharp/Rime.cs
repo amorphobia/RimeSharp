@@ -36,6 +36,9 @@ namespace RimeSharp
     internal delegate RimeSessionId CreateSession();
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate bool FindSession(RimeSessionId sessionId);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate bool DestroySession(RimeSessionId sessionId);
     
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -201,6 +204,8 @@ namespace RimeSharp
         public bool SyncUserData() => _api.SyncUserData();
 
         public RimeSessionId CreateSession() => _api.CreateSession();
+
+        public bool FindSession(RimeSessionId sessionId) => _api.FindSession(sessionId);
 
         public bool DestroySession(RimeSessionId sessionId) => _api.DestroySession(sessionId);
 
@@ -393,7 +398,8 @@ namespace RimeSharp
         public DBool SyncUserData;
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public CreateSession CreateSession;
-        public IntPtr FindSession; // unused
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public FindSession FindSession;
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public DestroySession DestroySession;
         public IntPtr CleanupStaleSessions; // unused
