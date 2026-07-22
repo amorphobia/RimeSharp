@@ -35,6 +35,7 @@ public sealed class GetRimeCommitCmdlet : PSCmdlet, IDisposable
             return;
         }
 
+        SessionValidation.EnsureSessionValid(this, _rime, Session);
         using var commit = _rime.GetCommit(Session.Id);
         WriteObject(commit.Text);
     }
@@ -76,6 +77,7 @@ public sealed class GetRimeContextCmdlet : PSCmdlet, IDisposable
             return;
         }
 
+        SessionValidation.EnsureSessionValid(this, _rime, Session);
         var context = _rime.GetContext(Session.Id);
         WriteObject(context);
     }
@@ -117,6 +119,7 @@ public sealed class GetRimeStatusCmdlet : PSCmdlet, IDisposable
             return;
         }
 
+        SessionValidation.EnsureSessionValid(this, _rime, Session);
         var status = _rime.GetStatus(Session.Id);
         WriteObject(status);
     }

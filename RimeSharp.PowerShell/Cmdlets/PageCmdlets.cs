@@ -50,6 +50,7 @@ public sealed class SetRimePageCmdlet : PSCmdlet, IDisposable
             return;
         }
 
+        SessionValidation.EnsureSessionValid(this, _rime, Session);
         var backward = Direction == PageDirection.Previous;
         if (!_rime.ChangePage(Session.Id, backward))
         {

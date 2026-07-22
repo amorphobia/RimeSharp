@@ -45,6 +45,7 @@ public sealed class SelectRimeCandidateCmdlet : PSCmdlet, IDisposable
             return;
         }
 
+        SessionValidation.EnsureSessionValid(this, _rime, Session);
         if (!_rime.SelectCandidate(Session.Id, Index, OnCurrentPage))
         {
             var ex = new ArgumentException(

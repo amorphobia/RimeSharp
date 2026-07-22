@@ -43,6 +43,7 @@ public sealed class SendRimeKeyCmdlet : PSCmdlet, IDisposable
             return;
         }
 
+        SessionValidation.EnsureSessionValid(this, _rime, Session);
         _rime.SimulateKeySequence(Session.Id, Sequence);
 
         var commit  = _rime.GetCommit(Session.Id);
@@ -107,6 +108,7 @@ public sealed class SendRimeKeyEventCmdlet : PSCmdlet, IDisposable
             return;
         }
 
+        SessionValidation.EnsureSessionValid(this, _rime, Session);
         var handled = _rime.ProcessKey(Session.Id, KeyCode, Mask);
         WriteObject(handled);
     }

@@ -35,6 +35,7 @@ public sealed class GetRimeSchemaCmdlet : PSCmdlet, IDisposable
             return;
         }
 
+        SessionValidation.EnsureSessionValid(this, _rime, Session);
         using var status = _rime.GetStatus(Session.Id);
         var currentSchemaId = status.SchemaId;
         if (string.IsNullOrEmpty(currentSchemaId))
@@ -99,6 +100,7 @@ public sealed class SetRimeSchemaCmdlet : PSCmdlet, IDisposable
             return;
         }
 
+        SessionValidation.EnsureSessionValid(this, _rime, Session);
         if (!_rime.SelectSchema(Session.Id, SchemaId))
         {
             var ex = new ArgumentException(
