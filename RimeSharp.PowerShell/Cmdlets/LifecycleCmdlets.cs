@@ -1,4 +1,5 @@
 using System.Management.Automation;
+using System.Threading;
 
 namespace RimeSharp.PowerShell.Cmdlets;
 
@@ -10,6 +11,8 @@ namespace RimeSharp.PowerShell.Cmdlets;
 public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
 {
     private Rime? _rime;
+    private bool _isSetup;
+    private int _stopRequested;
 
     [Parameter(Position = 0)]
     public string AppName { get; set; } = "RimeSharp.PowerShell";
@@ -49,7 +52,34 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
 
     protected override void BeginProcessing()
     {
+        if (!RimeEngineLifecycle.TryBeginStart())
+        {
+            var ex = new InvalidOperationException(
+                "RIME is already started in this process. Stop the active session before starting another.");
+            ThrowTerminatingError(new ErrorRecord(
+                ex,
+                "RimeAlreadyStarted",
+                ErrorCategory.InvalidOperation,
+                null));
+            return;
+        }
+
+        try
+        {
+            StartEngine();
+        }
+        catch
+        {
+            CleanupFailedStart();
+            RimeEngineLifecycle.CompleteStop();
+            throw;
+        }
+    }
+
+    private void StartEngine()
+    {
         _rime = Rime.Instance();
+        ThrowIfStopRequested();
 
         var traits = new RimeTraits
         {
@@ -68,12 +98,17 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
         traits.MinLogLevel = MinLogLevel;
 
         _rime.Setup(ref traits);
+        _isSetup = true;
+        ThrowIfStopRequested();
+        RimeNotificationBridge.OnEngineSetup(_rime);
         _rime.Initialize(ref traits);
+        ThrowIfStopRequested();
 
         if (_rime.StartMaintenance(fullCheck: true))
         {
             _rime.JoinMaintenanceThread();
         }
+        ThrowIfStopRequested();
 
         var sessionId = _rime.CreateSession();
         if (sessionId == 0)
@@ -83,36 +118,62 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
                 ErrorCategory.ResourceUnavailable, null));
             return;
         }
+        ThrowIfStopRequested();
 
         var session = new RimeSession(sessionId);
+        WriteObject(session);
 
         if (PassThru)
         {
             SessionState.PSVariable.Set("global:RimeDefaultSession", session);
         }
+    }
 
-        WriteObject(session);
+    private void CleanupFailedStart()
+    {
+        if (!_isSetup || _rime is null) return;
+
+        try
+        {
+            RimeNotificationBridge.OnEngineFinalizing(_rime);
+            _rime.Finalize1();
+        }
+        catch
+        {
+            // Preserve the original startup failure.
+        }
     }
 
     protected override void StopProcessing()
     {
-        Dispose();
+        Volatile.Write(ref _stopRequested, 1);
     }
 
     public void Dispose()
     {
         _rime = null;
     }
+
+    private void ThrowIfStopRequested()
+    {
+        if (Volatile.Read(ref _stopRequested) != 0)
+        {
+            throw new OperationCanceledException("Start-Rime was stopped.");
+        }
+    }
 }
 
 /// <summary>
-/// Destroy a RIME session and finalize the engine when no sessions remain.
+/// Destroy the active RIME session and finalize the single engine lifecycle.
 /// </summary>
 [Cmdlet(VerbsLifecycle.Stop, "Rime")]
 [OutputType(typeof(void))]
 public sealed class StopRimeCmdlet : PSCmdlet, IDisposable
 {
+    private readonly object _finalizationSync = new();
     private Rime? _rime;
+    private bool _isFinalized;
+    private bool _sessionDestroyed;
 
     [Parameter(
         Position = 0,
@@ -127,6 +188,15 @@ public sealed class StopRimeCmdlet : PSCmdlet, IDisposable
     }
 
     protected override void ProcessRecord()
+    {
+        lock (_finalizationSync)
+        {
+            if (_isFinalized) return;
+            StopSession();
+        }
+    }
+
+    private void StopSession()
     {
         if (_rime is null) return;
         if (Session is null)
@@ -146,6 +216,7 @@ public sealed class StopRimeCmdlet : PSCmdlet, IDisposable
                 ErrorCategory.InvalidArgument, Session));
             return;
         }
+        _sessionDestroyed = true;
 
         var defaultSession = SessionState.PSVariable.GetValue(
             "global:RimeDefaultSession") as RimeSession;
@@ -157,16 +228,47 @@ public sealed class StopRimeCmdlet : PSCmdlet, IDisposable
 
     protected override void EndProcessing()
     {
-        _rime?.Finalize1();
+        FinalizeEngine();
     }
 
     protected override void StopProcessing()
     {
-        Dispose();
+        FinalizeEngine();
     }
 
     public void Dispose()
     {
-        _rime = null;
+        FinalizeEngine();
     }
+
+    private void FinalizeEngine()
+    {
+        lock (_finalizationSync)
+        {
+            if (_isFinalized || !_sessionDestroyed || _rime is null) return;
+            _isFinalized = true;
+
+            try
+            {
+                RimeNotificationBridge.OnEngineFinalizing(_rime);
+                _rime.Finalize1();
+            }
+            finally
+            {
+                _rime = null;
+                RimeEngineLifecycle.CompleteStop();
+            }
+        }
+    }
+}
+
+internal static class RimeEngineLifecycle
+{
+    private static int s_isActive;
+
+    internal static bool TryBeginStart()
+        => Interlocked.CompareExchange(ref s_isActive, 1, 0) == 0;
+
+    internal static void CompleteStop()
+        => Volatile.Write(ref s_isActive, 0);
 }

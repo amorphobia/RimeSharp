@@ -18,14 +18,19 @@
         'Get-RimeCommit'
         'Get-RimeContext'
         'Get-RimeStatus'
+        'Get-RimeCandidate'
         'Select-RimeCandidate'
         'Set-RimePage'
         'Get-RimeSchema'
         'Set-RimeSchema'
+        'Get-RimeSwitcherSchema'
         'Get-RimeOption'
         'Set-RimeOption'
+        'Get-RimeStateLabel'
         'Remove-RimeCandidate'
         'Invoke-RimeHighlight'
+        'Register-RimeNotification'
+        'Receive-RimeNotification'
     )
     VariablesToExport    = @()
     AliasesToExport      = @()
