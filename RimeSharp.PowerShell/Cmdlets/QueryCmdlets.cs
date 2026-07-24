@@ -45,10 +45,11 @@ public sealed class GetRimeCommitCmdlet : PSCmdlet, IDisposable
 }
 
 /// <summary>
-/// Get the current input context from a RIME session (preedit, candidates, menu).
+/// Get a managed snapshot of the current input context from a RIME session
+/// (preedit, candidates, menu).
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "RimeContext")]
-[OutputType(typeof(RimeContext))]
+[OutputType(typeof(RimeContextSnapshot))]
 public sealed class GetRimeContextCmdlet : PSCmdlet, IDisposable
 {
     private Rime? _rime;
@@ -78,8 +79,8 @@ public sealed class GetRimeContextCmdlet : PSCmdlet, IDisposable
         }
 
         SessionValidation.EnsureSessionValid(this, _rime, Session);
-        var context = _rime.GetContext(Session.Id);
-        WriteObject(context);
+        using var context = _rime.GetContext(Session.Id);
+        WriteObject(new RimeContextSnapshot(context));
     }
 
     protected override void StopProcessing() => Dispose();
@@ -87,10 +88,11 @@ public sealed class GetRimeContextCmdlet : PSCmdlet, IDisposable
 }
 
 /// <summary>
-/// Get the current engine status from a RIME session (schema, mode flags).
+/// Get a managed snapshot of the current engine status from a RIME session
+/// (schema, mode flags).
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "RimeStatus")]
-[OutputType(typeof(RimeStatus))]
+[OutputType(typeof(RimeStatusSnapshot))]
 public sealed class GetRimeStatusCmdlet : PSCmdlet, IDisposable
 {
     private Rime? _rime;
@@ -120,8 +122,8 @@ public sealed class GetRimeStatusCmdlet : PSCmdlet, IDisposable
         }
 
         SessionValidation.EnsureSessionValid(this, _rime, Session);
-        var status = _rime.GetStatus(Session.Id);
-        WriteObject(status);
+        using var status = _rime.GetStatus(Session.Id);
+        WriteObject(new RimeStatusSnapshot(status));
     }
 
     protected override void StopProcessing() => Dispose();

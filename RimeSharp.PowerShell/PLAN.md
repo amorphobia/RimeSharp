@@ -17,6 +17,7 @@ All six planned stages are complete. The module exports all 15 planned cmdlets.
 - **单次调用返回完整渲染所需数据**：输入法前端在每个按键后需要 commit text + status + context 来渲染 UI，`Send-RimeKey` 一次性返回全部
 - **错误走 ErrorRecord**：不与 console 耦合，让调用方通过 `-ErrorAction` 决定如何处理
 - **Verb 类名为复数**：PowerShell SDK 的动词常量类名均以 `s` 结尾，如 `VerbsCommunications`（而非 `VerbsCommunication`）、`VerbsCommon`、`VerbsLifecycle`。声明 `[Cmdlet]` 属性时注意类名不可省略末尾的 `s`。
+- **Managed pipeline snapshots**: cmdlets copy native results into managed objects and release native allocations before writing to the pipeline.
 
 
 ## 对象模型
@@ -27,13 +28,13 @@ Start-Rime → [RimeSession]
                 │
                 ├── Send-RimeKey -Sequence "nihao" → [RimeResponse]
                 │     ├── Commit : string?
-                │     ├── Status  : RimeStatus (schema, ascii/trad/simp flags, composing...)
-                │     └── Context : RimeContext (preedit, candidates, menu page info)
+                │     ├── Status  : RimeStatusSnapshot (schema and mode flags)
+                │     └── Context : RimeContextSnapshot (preedit, candidates, menu page info)
                 │
                 ├── Send-RimeKeyEvent -KeyCode <int> [-Mask <int>] → bool
-                ├── Get-RimeCommit → [RimeCommit]
-                ├── Get-RimeContext → [RimeContext]
-                ├── Get-RimeStatus  → [RimeStatus]
+                ├── Get-RimeCommit → string
+                ├── Get-RimeContext → [RimeContextSnapshot]
+                ├── Get-RimeStatus  → [RimeStatusSnapshot]
                 │
                 ├── Select-RimeCandidate -Index <n> [-OnCurrentPage]
                 ├── Remove-RimeCandidate -Index <n> [-OnCurrentPage]
@@ -65,11 +66,13 @@ public sealed class RimeSession
 ```csharp
 public sealed class RimeResponse
 {
-    public string? Commit { get; init; }
-    public RimeStatus Status { get; init; }
-    public RimeContext Context { get; init; }
+    public string? Commit { get; }
+    public RimeStatusSnapshot Status { get; }
+    public RimeContextSnapshot Context { get; }
 }
 ```
+
+`RimeResponse` and its nested snapshots contain no native handles and do not require disposal.
 
 ## Cmdlet 清单
 
@@ -232,7 +235,8 @@ RimeSharp.PowerShell/
 ├── Types/
 │   ├── RimeSession.cs          # 会话对象
 │   ├── RimeResponse.cs         # Send-RimeKey 的返回对象
-│   └── RimeSchemaInfo.cs       # Managed schema metadata
+│   ├── RimeSchemaInfo.cs       # Managed schema metadata
+│   └── RimeSnapshots.cs        # Managed status and context snapshots
 ├── Cmdlets/
 │   ├── LifecycleCmdlets.cs     # Start-Rime, Stop-Rime
 │   ├── KeyCmdlets.cs           # Send-RimeKey, Send-RimeKeyEvent

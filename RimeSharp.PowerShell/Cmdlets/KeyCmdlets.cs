@@ -53,11 +53,14 @@ public sealed class SendRimeKeyCmdlet : PSCmdlet, IDisposable
             return;
         }
 
-        var commit  = _rime.GetCommit(Session.Id);
-        var status  = _rime.GetStatus(Session.Id);
-        var context = _rime.GetContext(Session.Id);
+        using var commit  = _rime.GetCommit(Session.Id);
+        using var status  = _rime.GetStatus(Session.Id);
+        using var context = _rime.GetContext(Session.Id);
 
-        var response = new RimeResponse(commit, status, context);
+        var response = new RimeResponse(
+            commit.Text,
+            new RimeStatusSnapshot(status),
+            new RimeContextSnapshot(context));
         WriteObject(response);
     }
 
