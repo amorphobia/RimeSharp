@@ -24,6 +24,8 @@
         'Set-RimeSchema'
         'Get-RimeOption'
         'Set-RimeOption'
+        'Remove-RimeCandidate'
+        'Invoke-RimeHighlight'
     )
     VariablesToExport    = @()
     AliasesToExport      = @()

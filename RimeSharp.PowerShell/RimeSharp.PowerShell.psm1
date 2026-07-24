@@ -114,4 +114,6 @@ Export-ModuleMember -Cmdlet @(
     'Set-RimeSchema'
     'Get-RimeOption'
     'Set-RimeOption'
+    'Remove-RimeCandidate'
+    'Invoke-RimeHighlight'
 )

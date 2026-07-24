@@ -1,5 +1,9 @@
 # RimeSharp.PowerShell — 模块设计计划
 
+## Implementation Status
+
+All six planned stages are complete. The module exports all 15 planned cmdlets.
+
 ## 目标与受众
 
 **目标**：为 PowerShell 脚本提供 RIME 输入法引擎的 cmdlet 接口。前端开发者使用 PowerShell 脚本开发输入法前端时，通过本模块与 RIME 引擎交互。
@@ -227,15 +231,17 @@ RimeSharp.PowerShell/
 ├── PLAN.md
 ├── Types/
 │   ├── RimeSession.cs          # 会话对象
-│   └── RimeResponse.cs         # Send-RimeKey 的返回对象
+│   ├── RimeResponse.cs         # Send-RimeKey 的返回对象
+│   └── RimeSchemaInfo.cs       # Managed schema metadata
 ├── Cmdlets/
 │   ├── LifecycleCmdlets.cs     # Start-Rime, Stop-Rime
 │   ├── KeyCmdlets.cs           # Send-RimeKey, Send-RimeKeyEvent
 │   ├── QueryCmdlets.cs         # Get-RimeCommit, Get-RimeContext, Get-RimeStatus
 │   ├── CandidateCmdlets.cs     # Select-, Remove-RimeCandidate, Invoke-RimeHighlight
-│   ├── PageCmdlet.cs           # Set-RimePage
+│   ├── PageCmdlets.cs          # Set-RimePage
 │   ├── SchemaCmdlets.cs        # Get-RimeSchema, Set-RimeSchema
-│   └── OptionCmdlets.cs        # Get-RimeOption, Set-RimeOption
+│   ├── OptionCmdlets.cs        # Get-RimeOption, Set-RimeOption
+│   └── SessionValidation.cs    # Shared session validation
 ```
 
 ## 实现顺序
