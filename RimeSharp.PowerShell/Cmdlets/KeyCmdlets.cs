@@ -44,7 +44,14 @@ public sealed class SendRimeKeyCmdlet : PSCmdlet, IDisposable
         }
 
         SessionValidation.EnsureSessionValid(this, _rime, Session);
-        _rime.SimulateKeySequence(Session.Id, Sequence);
+        if (!_rime.SimulateKeySequence(Session.Id, Sequence))
+        {
+            var ex = new ArgumentException(
+                $"Key sequence '{Sequence}' could not be simulated.", nameof(Sequence));
+            ThrowTerminatingError(new ErrorRecord(ex, "RimeKeySequenceFailed",
+                ErrorCategory.InvalidArgument, Sequence));
+            return;
+        }
 
         var commit  = _rime.GetCommit(Session.Id);
         var status  = _rime.GetStatus(Session.Id);

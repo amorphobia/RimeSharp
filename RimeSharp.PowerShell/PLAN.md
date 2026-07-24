@@ -294,11 +294,7 @@ function Invoke-KeyPress {
     }
 }
 
-# 监听 RIME 通知
-Register-RimeNotification -OptionChanged {
-    param($Session, $Option, $Value)
-    # 更新 UI 状态指示器
-}
+# Notification registration is planned for a later release.
 
 # 使用
 Invoke-KeyPress "nihao"
@@ -309,8 +305,9 @@ Set-RimeOption ascii_mode $true
 Stop-Rime
 ```
 
-## 暂不纳入 v0.1
+## Deferred Work
 
-- `RimeConfig` 直接操作（Open-RimeConfig、Get-RimeConfigValue）— 配置编辑通常是应用设置界面做的事，不需要脚本
-- `Register-RimeNotification` — 通知回调需要长生命周期 delegate 管理，放到 v0.2
-- `RimeLevers` / `RimeSwitcherSettings` / `RimeCustomSettings` 相关 — graph 比较深，v0.2
+- `Get-RimeCandidate` — expose the complete candidate list across pages for diagnostics and API-console parity.
+- `Register-RimeNotification` — requires managed delegate lifetime, native callback queueing, and PowerShell runspace-safe event delivery.
+- Switcher schema queries — expose available and selected schema lists through `RimeLevers` and `RimeSwitcherSettings`.
+- Direct `RimeConfig` operations — configuration editing remains outside the v0.1 cmdlet surface.
