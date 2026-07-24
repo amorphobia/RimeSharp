@@ -57,7 +57,7 @@ namespace RimeSharp
             => _levers.GetAvailableSchemaList(ptr, out list);
         
         internal bool GetSelectedSchemaList(IntPtr ptr, out RimeSchemaList list)
-            => _levers.GetAvailableSchemaList(ptr, out list);
+            => _levers.GetSelectedSchemaList(ptr, out list);
         
         internal void SchemaListDestroy(ref RimeSchemaList list)
             => _levers.SchemaListDestroy(ref list);
