@@ -81,6 +81,12 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
         _rime = Rime.Instance();
         ThrowIfStopRequested();
 
+        SharedDataDir = ResolvePath(SharedDataDir);
+        UserDataDir = ResolvePath(UserDataDir);
+        LogDir = ResolveOptionalPath(LogDir);
+        PrebuiltDataDir = ResolveOptionalPath(PrebuiltDataDir);
+        StagingDir = ResolveOptionalPath(StagingDir);
+
         var traits = new RimeTraits
         {
             AppName = AppName,
@@ -161,6 +167,12 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
             throw new OperationCanceledException("Start-Rime was stopped.");
         }
     }
+
+    private string ResolvePath(string path)
+        => SessionState.Path.GetUnresolvedProviderPathFromPSPath(path);
+
+    private string? ResolveOptionalPath(string? path)
+        => string.IsNullOrEmpty(path) ? path : ResolvePath(path);
 }
 
 /// <summary>
