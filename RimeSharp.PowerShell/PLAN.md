@@ -5,6 +5,18 @@
 All seven planned stages are complete. The module exports all 20 planned cmdlets
 and covers the interactive API-console surface demonstrated by `RimeSharp.Test`.
 
+PowerShell 7.4 on .NET 8 is the primary implementation target and has been
+validated against a native librime deployment, including schema and status
+queries, composition, candidate enumeration, commit retrieval, and
+notifications.
+
+The `net472` target is retained for future Windows PowerShell 5.1 compatibility.
+It is not currently considered production-ready because native UTF-8 strings
+returned in librime structures are corrupted by the .NET Framework interop
+path. The `net8.0` implementation does not exhibit this problem. Supporting
+Windows PowerShell 5.1 requires replacing affected automatic `LPUTF8Str`
+structure-field marshaling with explicit native pointer conversion.
+
 ## 目标与受众
 
 **目标**：为 PowerShell 脚本提供 RIME 输入法引擎的 cmdlet 接口。前端开发者使用 PowerShell 脚本开发输入法前端时，通过本模块与 RIME 引擎交互。
