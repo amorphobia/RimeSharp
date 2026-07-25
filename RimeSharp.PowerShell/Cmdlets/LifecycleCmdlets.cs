@@ -48,7 +48,7 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
     public string? StagingDir { get; set; }
 
     [Parameter]
-    public SwitchParameter PassThru { get; set; }
+    public SwitchParameter SetDefaultSession { get; set; }
 
     protected override void BeginProcessing()
     {
@@ -129,7 +129,7 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
         var session = new RimeSession(sessionId);
         WriteObject(session);
 
-        if (PassThru)
+        if (SetDefaultSession)
         {
             SessionState.PSVariable.Set("global:RimeDefaultSession", session);
         }

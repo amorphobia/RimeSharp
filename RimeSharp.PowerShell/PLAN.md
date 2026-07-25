@@ -103,13 +103,14 @@ public sealed class RimeResponse
 
 ```
 Start-Rime [-AppName <string>] [-SharedDataDir <string>] [-UserDataDir <string>]
-           [-PassThru] [<CommonParameters>]
+           [-SetDefaultSession] [<CommonParameters>]
 ```
 
 初始化 RIME 引擎，运行维护（如需要），创建 session。
 输出 `[RimeSession]`。
 
-`-PassThru`：将 session 写入 `$global:RimeDefaultSession`，后续 cmdlet 在未指定 `-Session` 时自动使用。方便长脚本不用到处传参。
+`-SetDefaultSession` stores the session in `$global:RimeDefaultSession`. Subsequent
+cmdlets use that session when `-Session` is omitted.
 
 A second `Start-Rime` before the active lifecycle is stopped produces the
 `RimeAlreadyStarted` terminating error.
@@ -360,7 +361,7 @@ Import-Module RimeSharp.PowerShell
 Register-RimeNotification
 
 # 启动引擎
-$session = Start-Rime -SharedDataDir ./shared -UserDataDir ./user -PassThru
+$session = Start-Rime -SharedDataDir ./shared -UserDataDir ./user -SetDefaultSession
 
 # 输入循环
 function Invoke-KeyPress {
