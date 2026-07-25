@@ -172,7 +172,14 @@ public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
         => SessionState.Path.GetUnresolvedProviderPathFromPSPath(path);
 
     private string? ResolveOptionalPath(string? path)
-        => string.IsNullOrEmpty(path) ? path : ResolvePath(path);
+    {
+        if (path is null || path.Length == 0)
+        {
+            return path;
+        }
+
+        return ResolvePath(path);
+    }
 }
 
 /// <summary>
