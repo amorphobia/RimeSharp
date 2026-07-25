@@ -1,23 +1,38 @@
+using System.Text;
+
 namespace RimeSharp.PowerShell;
 
 /// <summary>
 /// Managed snapshot of a RIME composition.
 /// </summary>
+/// <remarks>
+/// Length and position properties use UTF-16 code-unit indexes so that they
+/// can be applied directly to the .NET <see cref="Preedit"/> string.
+/// </remarks>
 public sealed class RimeCompositionSnapshot
 {
     public int Length { get; }
-    public int CursorPos { get; }
-    public int SelStart { get; }
-    public int SelEnd { get; }
+    public int CursorPosition { get; }
+    public int SelectionStart { get; }
+    public int SelectionEnd { get; }
     public string? Preedit { get; }
 
     internal RimeCompositionSnapshot(RimeComposition composition)
     {
-        Length = composition.Length;
-        CursorPos = composition.CursorPos;
-        SelStart = composition.SelStart;
-        SelEnd = composition.SelEnd;
         Preedit = composition.Preedit;
+        if (Preedit is null) return;
+
+        Length = Preedit.Length;
+        var utf8Preedit = Encoding.UTF8.GetBytes(Preedit);
+        CursorPosition = ToUtf16Index(utf8Preedit, composition.CursorPos);
+        SelectionStart = ToUtf16Index(utf8Preedit, composition.SelStart);
+        SelectionEnd = ToUtf16Index(utf8Preedit, composition.SelEnd);
+    }
+
+    private static int ToUtf16Index(byte[] utf8Text, int utf8Offset)
+    {
+        var clampedOffset = Math.Min(Math.Max(utf8Offset, 0), utf8Text.Length);
+        return Encoding.UTF8.GetCharCount(utf8Text, 0, clampedOffset);
     }
 }
 
