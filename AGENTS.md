@@ -6,6 +6,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 - Communicate with the user and explain project content in Chinese, including when discussing English-language project material. Keep all repository content in English: code, comments, documentation, and any other text written to files must not contain Chinese.
 - Limit Agent operations to reading and writing files and running read-only Git queries. Do not build, test, restore, publish, install dependencies, or run the project. Do not make Git state changes, including staging, committing, pushing, pulling, creating branches, or switching branches. When any prohibited operation is needed, provide the exact command for the user to run and wait for the user to return its output before continuing.
+- Except when adding new librime bindings, do not introduce changes under `RimeSharp/` or `RimeSharp.Test/`; the upstream maintainer does not want unrelated modifications in those directories.
 
 ## User-Run Build & Test Commands
 
