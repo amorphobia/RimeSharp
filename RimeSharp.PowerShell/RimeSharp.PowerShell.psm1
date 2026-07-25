@@ -82,7 +82,7 @@ $moduleDir = $PSScriptRoot
 # Probe Release first (published module), then Debug (development).
 $loaded = $false
 foreach ($config in @('Release', 'Debug')) {
-    $assemblyDir = Join-Path $moduleDir "bin" $config $tf
+    $assemblyDir = Join-Path (Join-Path (Join-Path $moduleDir 'bin') $config) $tf
     $binaryPath = Join-Path $assemblyDir 'RimeSharp.PowerShell.dll'
     if (-not (Test-Path $binaryPath)) { continue }
 
