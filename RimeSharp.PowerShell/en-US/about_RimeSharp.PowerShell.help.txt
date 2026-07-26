@@ -1,0 +1,43 @@
+TOPIC
+    about_RimeSharp.PowerShell
+
+SHORT DESCRIPTION
+    Process-owned PowerShell access to librime with explicit sessions.
+
+LONG DESCRIPTION
+    RimeSharp.PowerShell owns one process-wide librime lifecycle and serializes
+    every native operation through one cancellation-aware gate. Do not mix the
+    module with direct RimeSharp.Rime calls or another binding in the same
+    process.
+
+    Start-Rime establishes a lifecycle but creates no session. Use
+    New-RimeSession to create every input context explicitly. Pass that exact
+    RimeSession object to all session-scoped commands. Remove-RimeSession only
+    destroys its target session. Stop-Rime destroys all remaining registered
+    sessions and finalizes the lifecycle.
+
+    Native notifications are registered automatically. Use
+    Receive-RimeNotification for durable queued delivery. Use
+    Get-RimeNotificationSource and its NotificationReceived event for a
+    decoupled live mirror of startup and deployment notifications.
+
+    Deploy-Rime is a non-coordinating deployment primitive. The caller must
+    coordinate other processes that share writable RIME directories.
+
+    Get-RimeConfig materializes only the explicitly supplied shape. It does not
+    parse YAML, infer node types, or support optional members.
+
+EXAMPLES
+    Start-Rime -SharedDataDir ./shared -UserDataDir ./user
+    $session = New-RimeSession
+    Send-RimeKeyEvent -Session $session -KeyCode 97
+    Remove-RimeSession -Session $session
+    Stop-Rime -Confirm:$false
+
+SEE ALSO
+    Start-Rime
+    New-RimeSession
+    Stop-Rime
+    Deploy-Rime
+    Get-RimeConfig
+    Get-RimeNotificationSource
