@@ -26,7 +26,7 @@ namespace RimeSharp
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void SetNotificationHandler(
         RimeNotificationHandler handler,
-        RimeSessionId contextObject
+        UIntPtr contextObject
     );
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -167,6 +167,14 @@ namespace RimeSharp
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate bool ChangePage(RimeSessionId sessionId, bool backward);
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate IntPtr GetInput(RimeSessionId sessionId);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate bool DeployConfigFile(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string fileName,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string versionKey);
+
     public sealed class Rime
     {
         private static readonly Lazy<Rime> s_instance = new(() => new Rime());
@@ -188,8 +196,8 @@ namespace RimeSharp
 
         public void Setup(ref RimeTraits traits) => _api.Setup(ref traits);
 
-        public void SetNotificationHandler(RimeNotificationHandler handler)
-            => _api.SetNotificationHandler(handler, UIntPtr.Zero);
+        public void SetNotificationHandler(RimeNotificationHandler handler, UIntPtr contextObject = default)
+            => _api.SetNotificationHandler(handler, contextObject);
 
         public void Initialize(ref RimeTraits traits) => _api.Initialize(ref traits);
 
@@ -202,6 +210,13 @@ namespace RimeSharp
         public void JoinMaintenanceThread() => _api.JoinMaintenanceThread();
 
         public bool SyncUserData() => _api.SyncUserData();
+
+        public void DeployerInitialize(ref RimeTraits traits) => _api.DeployerInitialize(ref traits);
+
+        public bool Deploy() => _api.Deploy();
+
+        public bool DeployConfigFile(string fileName, string versionKey)
+            => _api.DeployConfigFile(fileName, versionKey);
 
         public RimeSessionId CreateSession() => _api.CreateSession();
 
@@ -369,6 +384,14 @@ namespace RimeSharp
 
         public bool ChangePage(RimeSessionId sessionId, bool backward)
             => _api.ChangePage(sessionId, backward);
+
+        public string? GetInput(RimeSessionId sessionId)
+        {
+            var ptr = _api.GetInput(sessionId);
+            return ptr != IntPtr.Zero
+                ? UTF8Marshal.PtrToStringUTF8(ptr)
+                : null;
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -389,11 +412,14 @@ namespace RimeSharp
         public DBool IsMaintenanceMode;
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public DVoid JoinMaintenanceThread;
-        public IntPtr DeployerInitialize; // unused
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public DTraitsVoid DeployerInitialize;
         public IntPtr Prebuild; // unused
-        public IntPtr Deploy; // unused
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public DBool Deploy;
         public IntPtr DeploySchema; // unused
-        public IntPtr DeployConfigFile; // unused
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public DeployConfigFile DeployConfigFile;
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public DBool SyncUserData;
         [MarshalAs(UnmanagedType.FunctionPtr)]
@@ -484,7 +510,8 @@ namespace RimeSharp
         public ConfigListSize ConfigListSize;
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public ConfigBegin ConfigBeginList;
-        public IntPtr GetInput;
+        [MarshalAs(UnmanagedType.FunctionPtr)]
+        public GetInput GetInput;
         public IntPtr getCaretPos;
         [MarshalAs(UnmanagedType.FunctionPtr)]
         public ManipulateCandidate SelectCandidate;
