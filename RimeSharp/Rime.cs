@@ -128,7 +128,7 @@ namespace RimeSharp
     internal delegate bool ConfigNext(ref RimeConfigIterator iterator);
     
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate bool ConfigEnd(ref RimeConfigIterator iterator);
+    internal delegate void ConfigEnd(ref RimeConfigIterator iterator);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate bool SimulateKeySequence(RimeSessionId sessionId,
@@ -336,7 +336,7 @@ namespace RimeSharp
         internal bool ConfigNext(ref RimeConfigIterator iterator)
             => _api.ConfigNext(ref iterator);
 
-        internal bool ConfigEnd(ref RimeConfigIterator iterator)
+        internal void ConfigEnd(ref RimeConfigIterator iterator)
             => _api.ConfigEnd(ref iterator);
 
         public bool SimulateKeySequence(RimeSessionId sessionId, string keySequence)
