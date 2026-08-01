@@ -7,59 +7,36 @@ namespace RimeSharp.PowerShell.Cmdlets;
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "RimeStateLabel")]
 [OutputType(typeof(string))]
-public sealed class GetRimeStateLabelCmdlet : PSCmdlet, IDisposable
+public sealed class GetRimeStateLabelCmdlet : RimeSessionCmdlet
 {
-    private Rime? _rime;
-
-    [Parameter(
-        Position = 0,
-        Mandatory = true,
-        ValueFromPipelineByPropertyName = true
-    )]
+    [Parameter(Mandatory = true, ValueFromPipelineByPropertyName = true)]
     [Alias("OptionName")]
     [ValidateNotNullOrEmpty]
-    public string Name { get; set; } = "";
+    public string Name { get; set; } = string.Empty;
 
-    [Parameter(
-        Position = 1,
-        Mandatory = true,
-        ValueFromPipelineByPropertyName = true
-    )]
+    [Parameter(Mandatory = true, ValueFromPipelineByPropertyName = true)]
     [Alias("OptionState")]
     public bool State { get; set; }
-
-    [Parameter(
-        Position = 2,
-        ValueFromPipeline = true,
-        ValueFromPipelineByPropertyName = true
-    )]
-    public RimeSession? Session { get; set; }
 
     [Parameter]
     public SwitchParameter Abbreviated { get; set; }
 
-    protected override void BeginProcessing()
-    {
-        _rime = Rime.Instance();
-        Session ??= SessionState.PSVariable.GetValue("global:RimeDefaultSession") as RimeSession;
-    }
-
     protected override void ProcessRecord()
     {
-        if (_rime is null) return;
-        if (Session is null)
+        string label;
+        using (AcquireNativeGate())
         {
-            var ex = new InvalidOperationException(
-                "No RIME session specified. Pipe a session from Start-Rime or use -Session.");
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionMissing",
-                ErrorCategory.InvalidOperation, null));
-            return;
+            var session = RimeProcessRuntime.RequireSession(this, Session);
+            var rime = RimeProcessRuntime.ValidateSession(this, session);
+            ThrowIfStopping();
+            label = rime.GetStateLabel(
+                session.NativeId,
+                Name,
+                State,
+                Abbreviated);
+            ThrowIfStopping();
         }
 
-        SessionValidation.EnsureSessionValid(this, _rime, Session);
-        WriteObject(_rime.GetStateLabel(Session.Id, Name, State, Abbreviated));
+        WriteObject(label);
     }
-
-    protected override void StopProcessing() => Dispose();
-    public void Dispose() => _rime = null;
 }

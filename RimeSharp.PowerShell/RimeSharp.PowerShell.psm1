@@ -100,12 +100,38 @@ if (-not $loaded) {
     throw "RimeSharp.PowerShell.dll not found. Run build.ps1 first."
 }
 
+# The approved PowerShell DSL uses the short [RimeConfigShape] type name.
+# Register it once for the PowerShell process without replacing an accelerator
+# owned by another module. The process-wide lock makes concurrent first imports
+# from different runspaces atomic.
+$typeAccelerators = [psobject].Assembly.GetType(
+    'System.Management.Automation.TypeAccelerators')
+$configShapeType = [RimeSharp.PowerShell.RimeConfigShape]
+[System.Threading.Monitor]::Enter($typeAccelerators)
+try {
+    $registeredConfigShapeType = $typeAccelerators::Get['RimeConfigShape']
+    if ($null -eq $registeredConfigShapeType) {
+        $typeAccelerators::Add('RimeConfigShape', $configShapeType)
+    }
+    elseif ($registeredConfigShapeType -ne $configShapeType) {
+        throw "The RimeConfigShape type accelerator is already registered by another module."
+    }
+}
+finally {
+    [System.Threading.Monitor]::Exit($typeAccelerators)
+}
+
 Export-ModuleMember -Cmdlet @(
     'Start-Rime'
     'Stop-Rime'
+    'New-RimeSession'
+    'Remove-RimeSession'
+    'Deploy-Rime'
+    'Get-RimeConfig'
     'Send-RimeKey'
     'Send-RimeKeyEvent'
-    'Get-RimeCommit'
+    'Receive-RimeCommit'
+    'Get-RimeInput'
     'Get-RimeContext'
     'Get-RimeStatus'
     'Get-RimeCandidate'
@@ -119,6 +145,6 @@ Export-ModuleMember -Cmdlet @(
     'Get-RimeStateLabel'
     'Remove-RimeCandidate'
     'Invoke-RimeHighlight'
-    'Register-RimeNotification'
+    'Get-RimeNotificationSource'
     'Receive-RimeNotification'
 )

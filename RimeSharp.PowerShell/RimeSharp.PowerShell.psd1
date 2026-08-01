@@ -1,21 +1,27 @@
 @{
     RootModule           = 'RimeSharp.PowerShell.psm1'
-    ModuleVersion        = '0.1.0'
+    ModuleVersion        = '0.2.0'
     GUID                 = 'a3f1b8c7-2d4e-5f6a-8b9c-0d1e2f3a4b5c'
     Author               = 'RimeInn Contributors'
     CompanyName          = 'RimeInn'
     Copyright            = '(c) RimeInn Contributors. Apache 2.0.'
     Description          = 'PowerShell cmdlets for RIME Input Method Engine'
-    PowerShellVersion    = '5.1'
+    PowerShellVersion    = '7.4'
+    CompatiblePSEditions = @('Core')
     RequiredAssemblies   = @()
     RequiredModules      = @()
     FunctionsToExport    = @()
     CmdletsToExport      = @(
         'Start-Rime'
         'Stop-Rime'
+        'New-RimeSession'
+        'Remove-RimeSession'
+        'Deploy-Rime'
+        'Get-RimeConfig'
         'Send-RimeKey'
         'Send-RimeKeyEvent'
-        'Get-RimeCommit'
+        'Receive-RimeCommit'
+        'Get-RimeInput'
         'Get-RimeContext'
         'Get-RimeStatus'
         'Get-RimeCandidate'
@@ -29,7 +35,7 @@
         'Get-RimeStateLabel'
         'Remove-RimeCandidate'
         'Invoke-RimeHighlight'
-        'Register-RimeNotification'
+        'Get-RimeNotificationSource'
         'Receive-RimeNotification'
     )
     VariablesToExport    = @()

@@ -3,133 +3,186 @@ using System.Management.Automation;
 namespace RimeSharp.PowerShell.Cmdlets;
 
 /// <summary>
-/// Simulate a key sequence (e.g. "nihao" or "Down") and return a
-/// <see cref="RimeResponse"/> containing commit, status, and context.
-/// Internally calls <c>SimulateKeySequence</c>.
+/// Simulate a native key sequence and return its final atomic managed state.
 /// </summary>
 [Cmdlet(VerbsCommunications.Send, "RimeKey")]
-[OutputType(typeof(RimeResponse))]
-public sealed class SendRimeKeyCmdlet : PSCmdlet, IDisposable
+[OutputType(typeof(RimeKeySequenceResult))]
+public sealed class SendRimeKeyCmdlet : RimeCmdlet
 {
-    private Rime? _rime;
+    [Parameter(Mandatory = true)]
+    [ValidateNotNull]
+    public string Sequence { get; set; } = string.Empty;
 
-    [Parameter(
-        Position = 1,
-        ValueFromPipeline = true
-    )]
+    [Parameter(Mandatory = true, ValueFromPipeline = true)]
+    [AllowNull]
     public RimeSession? Session { get; set; }
-
-    [Parameter(
-        Position = 0,
-        Mandatory = true
-    )]
-    public string Sequence { get; set; } = "";
-
-    protected override void BeginProcessing()
-    {
-        _rime = Rime.Instance();
-        Session ??= SessionState.PSVariable.GetValue("global:RimeDefaultSession") as RimeSession;
-    }
 
     protected override void ProcessRecord()
     {
-        if (_rime is null) return;
-        if (Session is null)
+        using var gate = AcquireNativeGate();
+        var session = RimeProcessRuntime.RequireSession(this, Session);
+        var rime = RimeProcessRuntime.ValidateSession(this, session);
+        var bridge = RimeProcessRuntime.Bridge
+            ?? throw new InvalidOperationException(
+                "The active lifecycle has no notification bridge.");
+        ThrowIfStopping();
+
+        var capture = bridge.BeginCapture(session);
+        RimeNotification[] notifications;
+        bool succeeded;
+        try
         {
-            var ex = new InvalidOperationException(
-                "No RIME session specified. Pipe a session from Start-Rime or use -Session.");
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionMissing",
-                ErrorCategory.InvalidOperation, null));
+            succeeded = rime.SimulateKeySequence(session.NativeId, Sequence);
+        }
+        finally
+        {
+            notifications = bridge.EndCapture(capture);
+        }
+
+        ThrowIfStopping();
+        if (!succeeded)
+        {
+            RimeProcessRuntime.ThrowError(
+                this,
+                new ArgumentException(
+                    $"Key sequence '{Sequence}' could not be simulated.",
+                    nameof(Sequence)),
+                "RimeKeySequenceFailed",
+                ErrorCategory.InvalidArgument,
+                Sequence);
             return;
         }
 
-        SessionValidation.EnsureSessionValid(this, _rime, Session);
-        if (!_rime.SimulateKeySequence(Session.Id, Sequence))
+        var snapshot = ReadSnapshot(rime, session);
+        ThrowIfStopping();
+        WriteObject(
+            new RimeKeySequenceResult(
+                snapshot.Commit,
+                snapshot.Status,
+                snapshot.Context,
+                snapshot.Input,
+                notifications),
+            enumerateCollection: false);
+    }
+
+    private RimeOperationSnapshot ReadSnapshot(Rime rime, RimeSession session)
+    {
+        try
         {
-            var ex = new ArgumentException(
-                $"Key sequence '{Sequence}' could not be simulated.", nameof(Sequence));
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeKeySequenceFailed",
-                ErrorCategory.InvalidArgument, Sequence));
-            return;
+            return RimeOperationSnapshot.Read(rime, session);
         }
-
-        using var commit  = _rime.GetCommit(Session.Id);
-        using var status  = _rime.GetStatus(Session.Id);
-        using var context = _rime.GetContext(Session.Id);
-
-        var response = new RimeResponse(
-            commit.Text,
-            new RimeStatusSnapshot(status),
-            new RimeContextSnapshot(context));
-        WriteObject(response);
-    }
-
-    protected override void StopProcessing()
-    {
-        Dispose();
-    }
-
-    public void Dispose()
-    {
-        _rime = null;
+        catch (Exception ex)
+        {
+            RimeProcessRuntime.ThrowError(
+                this,
+                ex,
+                "RimeSnapshotFailed",
+                ErrorCategory.ReadError,
+                session);
+            throw;
+        }
     }
 }
 
 /// <summary>
-/// Send a single raw key event (key code + modifier mask) to a RIME session.
-/// Uses <c>ProcessKey</c> for low-level key handling.
+/// Process one raw key event and return its atomic managed result.
 /// </summary>
 [Cmdlet(VerbsCommunications.Send, "RimeKeyEvent")]
-[OutputType(typeof(bool))]
-public sealed class SendRimeKeyEventCmdlet : PSCmdlet, IDisposable
+[OutputType(typeof(RimeKeyEventResult))]
+public sealed class SendRimeKeyEventCmdlet : RimeCmdlet
 {
-    private Rime? _rime;
-
-    [Parameter(
-        Position = 2,
-        ValueFromPipeline = true
-    )]
-    public RimeSession? Session { get; set; }
-
-    [Parameter(
-        Position = 0,
-        Mandatory = true
-    )]
+    [Parameter(Mandatory = true)]
     public int KeyCode { get; set; }
 
-    [Parameter(Position = 1)]
+    [Parameter]
     public int Mask { get; set; }
 
-    protected override void BeginProcessing()
-    {
-        _rime = Rime.Instance();
-        Session ??= SessionState.PSVariable.GetValue("global:RimeDefaultSession") as RimeSession;
-    }
+    [Parameter(Mandatory = true, ValueFromPipeline = true)]
+    [AllowNull]
+    public RimeSession? Session { get; set; }
 
     protected override void ProcessRecord()
     {
-        if (_rime is null) return;
-        if (Session is null)
+        using var gate = AcquireNativeGate();
+        var session = RimeProcessRuntime.RequireSession(this, Session);
+        var rime = RimeProcessRuntime.ValidateSession(this, session);
+        var bridge = RimeProcessRuntime.Bridge
+            ?? throw new InvalidOperationException(
+                "The active lifecycle has no notification bridge.");
+        ThrowIfStopping();
+
+        var capture = bridge.BeginCapture(session);
+        RimeNotification[] notifications;
+        bool handled;
+        try
         {
-            var ex = new InvalidOperationException(
-                "No RIME session specified. Pipe a session from Start-Rime or use -Session.");
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionMissing",
-                ErrorCategory.InvalidOperation, null));
+            handled = rime.ProcessKey(session.NativeId, KeyCode, Mask);
+        }
+        finally
+        {
+            notifications = bridge.EndCapture(capture);
+        }
+
+        ThrowIfStopping();
+        RimeOperationSnapshot snapshot;
+        try
+        {
+            snapshot = RimeOperationSnapshot.Read(rime, session);
+        }
+        catch (Exception ex)
+        {
+            RimeProcessRuntime.ThrowError(
+                this,
+                ex,
+                "RimeSnapshotFailed",
+                ErrorCategory.ReadError,
+                session);
             return;
         }
 
-        SessionValidation.EnsureSessionValid(this, _rime, Session);
-        var handled = _rime.ProcessKey(Session.Id, KeyCode, Mask);
-        WriteObject(handled);
+        ThrowIfStopping();
+        WriteObject(
+            new RimeKeyEventResult(
+                handled,
+                snapshot.Commit,
+                snapshot.Status,
+                snapshot.Context,
+                snapshot.Input,
+                notifications),
+            enumerateCollection: false);
+    }
+}
+
+internal sealed class RimeOperationSnapshot
+{
+    internal string? Commit { get; }
+    internal RimeStatusSnapshot Status { get; }
+    internal RimeContextSnapshot Context { get; }
+    internal string Input { get; }
+
+    private RimeOperationSnapshot(
+        string? commit,
+        RimeStatusSnapshot status,
+        RimeContextSnapshot context,
+        string input)
+    {
+        Commit = commit;
+        Status = status;
+        Context = context;
+        Input = input;
     }
 
-    protected override void StopProcessing()
+    internal static RimeOperationSnapshot Read(Rime rime, RimeSession session)
     {
-        Dispose();
-    }
+        using var commit = rime.GetCommit(session.NativeId);
+        using var status = rime.GetStatus(session.NativeId);
+        using var context = rime.GetContext(session.NativeId);
+        var input = rime.GetInput(session.NativeId) ?? string.Empty;
 
-    public void Dispose()
-    {
-        _rime = null;
+        return new RimeOperationSnapshot(
+            commit.Text,
+            new RimeStatusSnapshot(status),
+            new RimeContextSnapshot(context),
+            input);
     }
 }

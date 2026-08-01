@@ -3,113 +3,88 @@ using System.Management.Automation;
 namespace RimeSharp.PowerShell.Cmdlets;
 
 /// <summary>
-/// List available RIME schemas and identify the schema active for a session.
+/// List available schemas and identify the schema active for one session.
 /// </summary>
 [Cmdlet(VerbsCommon.Get, "RimeSchema")]
 [OutputType(typeof(RimeSchemaInfo))]
-public sealed class GetRimeSchemaCmdlet : PSCmdlet, IDisposable
+public sealed class GetRimeSchemaCmdlet : RimeSessionCmdlet
 {
-    private Rime? _rime;
-
-    [Parameter(
-        Position = 0,
-        ValueFromPipeline = true
-    )]
-    public RimeSession? Session { get; set; }
-
-    protected override void BeginProcessing()
-    {
-        _rime = Rime.Instance();
-        Session ??= SessionState.PSVariable.GetValue("global:RimeDefaultSession") as RimeSession;
-    }
-
     protected override void ProcessRecord()
     {
-        if (_rime is null) return;
-        if (Session is null)
+        RimeSchemaInfo[] result;
+        using (AcquireNativeGate())
         {
-            var ex = new InvalidOperationException(
-                "No RIME session specified. Pipe a session from Start-Rime or use -Session.");
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionMissing",
-                ErrorCategory.InvalidOperation, null));
-            return;
+            var session = RimeProcessRuntime.RequireSession(this, Session);
+            var rime = RimeProcessRuntime.ValidateSession(this, session);
+            ThrowIfStopping();
+
+            using var status = rime.GetStatus(session.NativeId);
+            var currentSchemaId = status.SchemaId;
+            if (string.IsNullOrEmpty(currentSchemaId))
+            {
+                RimeProcessRuntime.ThrowError(
+                    this,
+                    new InvalidOperationException(
+                        $"Session {session.Id} has no active schema."),
+                    "RimeCurrentSchemaUnavailable",
+                    ErrorCategory.InvalidData,
+                    session);
+                return;
+            }
+
+            var schemas = rime.GetSchemaList();
+            result = new RimeSchemaInfo[schemas.Length];
+            for (var i = 0; i < schemas.Length; ++i)
+            {
+                result[i] = new RimeSchemaInfo(
+                    schemas[i].SchemaId,
+                    schemas[i].Name,
+                    string.Equals(
+                        schemas[i].SchemaId,
+                        currentSchemaId,
+                        StringComparison.Ordinal));
+            }
+
+            ThrowIfStopping();
         }
 
-        SessionValidation.EnsureSessionValid(this, _rime, Session);
-        using var status = _rime.GetStatus(Session.Id);
-        var currentSchemaId = status.SchemaId;
-        if (string.IsNullOrEmpty(currentSchemaId))
+        foreach (var schema in result)
         {
-            var ex = new ArgumentException(
-                $"Session {Session.Id} is invalid or has no active schema.", nameof(Session));
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeCurrentSchemaUnavailable",
-                ErrorCategory.InvalidArgument, Session));
-            return;
-        }
-
-        foreach (var schema in _rime.GetSchemaList())
-        {
-            WriteObject(new RimeSchemaInfo(
-                schema.SchemaId,
-                schema.Name,
-                string.Equals(schema.SchemaId, currentSchemaId, StringComparison.Ordinal)));
+            WriteObject(schema, enumerateCollection: false);
         }
     }
-
-    protected override void StopProcessing() => Dispose();
-    public void Dispose() => _rime = null;
 }
 
 /// <summary>
-/// Select the active schema for a RIME session.
+/// Select the active schema for one session.
 /// </summary>
 [Cmdlet(VerbsCommon.Set, "RimeSchema")]
 [OutputType(typeof(void))]
-public sealed class SetRimeSchemaCmdlet : PSCmdlet, IDisposable
+public sealed class SetRimeSchemaCmdlet : RimeSessionCmdlet
 {
-    private Rime? _rime;
-
-    [Parameter(
-        Position = 0,
-        Mandatory = true
-    )]
+    [Parameter(Mandatory = true)]
     [ValidateNotNullOrEmpty]
-    public string SchemaId { get; set; } = "";
-
-    [Parameter(
-        Position = 1,
-        ValueFromPipeline = true
-    )]
-    public RimeSession? Session { get; set; }
-
-    protected override void BeginProcessing()
-    {
-        _rime = Rime.Instance();
-        Session ??= SessionState.PSVariable.GetValue("global:RimeDefaultSession") as RimeSession;
-    }
+    public string SchemaId { get; set; } = string.Empty;
 
     protected override void ProcessRecord()
     {
-        if (_rime is null) return;
-        if (Session is null)
-        {
-            var ex = new InvalidOperationException(
-                "No RIME session specified. Pipe a session from Start-Rime or use -Session.");
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionMissing",
-                ErrorCategory.InvalidOperation, null));
-            return;
-        }
+        using var gate = AcquireNativeGate();
+        var session = RimeProcessRuntime.RequireSession(this, Session);
+        var rime = RimeProcessRuntime.ValidateSession(this, session);
+        ThrowIfStopping();
 
-        SessionValidation.EnsureSessionValid(this, _rime, Session);
-        if (!_rime.SelectSchema(Session.Id, SchemaId))
+        var succeeded = rime.SelectSchema(session.NativeId, SchemaId);
+        ThrowIfStopping();
+        if (!succeeded)
         {
-            var ex = new ArgumentException(
-                $"Schema '{SchemaId}' could not be selected.", nameof(SchemaId));
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeSchemaSelectionFailed",
-                ErrorCategory.InvalidArgument, SchemaId));
+            RimeProcessRuntime.ThrowError(
+                this,
+                new ArgumentException(
+                    $"Schema '{SchemaId}' could not be selected.",
+                    nameof(SchemaId)),
+                "RimeSchemaSelectionFailed",
+                ErrorCategory.InvalidArgument,
+                SchemaId);
         }
     }
-
-    protected override void StopProcessing() => Dispose();
-    public void Dispose() => _rime = null;
 }
