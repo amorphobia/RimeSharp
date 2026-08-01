@@ -1,293 +1,383 @@
 using System.Management.Automation;
-using System.Threading;
 
 namespace RimeSharp.PowerShell.Cmdlets;
 
 /// <summary>
-/// Initialize the RIME engine and return a <see cref="RimeSession"/> for pipeline binding.
+/// Start the process-wide RIME lifecycle without creating a session.
 /// </summary>
 [Cmdlet(VerbsLifecycle.Start, "Rime")]
-[OutputType(typeof(RimeSession))]
-public sealed class StartRimeCmdlet : PSCmdlet, IDisposable
+[OutputType(typeof(void))]
+public sealed class StartRimeCmdlet : RimeTraitsCmdlet
 {
-    private Rime? _rime;
-    private bool _isSetup;
-    private int _stopRequested;
-
-    [Parameter(Position = 0)]
-    public string AppName { get; set; } = "RimeSharp.PowerShell";
-
-    [Parameter(Position = 1)]
-    public string SharedDataDir { get; set; } = "shared";
-
-    [Parameter(Position = 2)]
-    public string UserDataDir { get; set; } = "user";
-
     [Parameter]
-    public string? DistributionName { get; set; }
-
-    [Parameter]
-    public string? DistributionCodeName { get; set; }
-
-    [Parameter]
-    public string? DistributionVersion { get; set; }
-
-    [Parameter]
-    public string? Modules { get; set; }
-
-    [Parameter]
-    public int MinLogLevel { get; set; }
-
-    [Parameter]
-    public string? LogDir { get; set; }
-
-    [Parameter]
-    public string? PrebuiltDataDir { get; set; }
-
-    [Parameter]
-    public string? StagingDir { get; set; }
-
-    [Parameter]
-    public SwitchParameter SetDefaultSession { get; set; }
+    public SwitchParameter FullMaintenance { get; set; }
 
     protected override void BeginProcessing()
     {
-        if (!RimeEngineLifecycle.TryBeginStart())
-        {
-            var ex = new InvalidOperationException(
-                "RIME is already started in this process. Stop the active session before starting another.");
-            ThrowTerminatingError(new ErrorRecord(
-                ex,
-                "RimeAlreadyStarted",
-                ErrorCategory.InvalidOperation,
-                null));
-            return;
-        }
+        using var gate = AcquireNativeGate();
+        var generation = RimeProcessRuntime.BeginStart(this);
+
+        Rime? rime = null;
+        RimeNotificationBridgeLifetime? bridge = null;
+        var setupEntered = false;
 
         try
         {
-            StartEngine();
+            var traitsData = BuildTraits();
+            ThrowIfStopping();
+
+            rime = Rime.Instance();
+            var traits = traitsData.CreateNativeTraits();
+
+            setupEntered = true;
+            rime.Setup(ref traits);
+            ThrowIfStopping();
+
+            bridge = RimeNotificationBridgeLifetime.CreateRegular();
+            rime.SetNotificationHandler(bridge.Handler, bridge.ContextObject);
+            ThrowIfStopping();
+
+            rime.Initialize(ref traits);
+            ThrowIfStopping();
+
+            if (rime.StartMaintenance(FullMaintenance))
+            {
+                rime.JoinMaintenanceThread();
+            }
+
+            ThrowIfStopping();
+            RimeProcessRuntime.CompleteStart(rime, bridge, generation);
         }
-        catch
+        catch (Exception primaryFailure)
         {
-            CleanupFailedStart();
-            RimeEngineLifecycle.CompleteStop();
-            throw;
+            var cleanupFailures = new List<Exception>();
+            if (setupEntered && rime is not null)
+            {
+                try
+                {
+                    rime.Finalize1();
+                }
+                catch (Exception cleanupFailure)
+                {
+                    cleanupFailures.Add(cleanupFailure);
+                }
+            }
+
+            RimeLifecycleState finalState;
+            if (cleanupFailures.Count == 0)
+            {
+                bridge?.Release();
+                RimeProcessRuntime.ResetInactive(invalidateSessions: true);
+                finalState = RimeLifecycleState.Inactive;
+            }
+            else
+            {
+                RimeProcessRuntime.RetainFaultedLifecycle(rime!, bridge);
+                finalState = RimeLifecycleState.Faulted;
+            }
+
+            var diagnostic = new RimeLifecycleFailureInfo(
+                RimeLifecycleOperation.Start,
+                finalState,
+                primaryFailure,
+                cleanupFailures);
+            RimeProcessRuntime.ThrowError(
+                this,
+                primaryFailure,
+                "RimeLifecycleStartFailed",
+                primaryFailure is OperationCanceledException
+                    ? ErrorCategory.OperationStopped
+                    : ErrorCategory.ResourceUnavailable,
+                diagnostic);
         }
-    }
-
-    private void StartEngine()
-    {
-        _rime = Rime.Instance();
-        ThrowIfStopRequested();
-
-        SharedDataDir = ResolvePath(SharedDataDir);
-        UserDataDir = ResolvePath(UserDataDir);
-        LogDir = ResolveOptionalPath(LogDir);
-        PrebuiltDataDir = ResolveOptionalPath(PrebuiltDataDir);
-        StagingDir = ResolveOptionalPath(StagingDir);
-
-        var traits = new RimeTraits
-        {
-            AppName = AppName,
-            SharedDataDir = SharedDataDir,
-            UserDataDir = UserDataDir,
-        };
-
-        if (DistributionName is not null) traits.DistributionName = DistributionName;
-        if (DistributionCodeName is not null) traits.DistributionCodeName = DistributionCodeName;
-        if (DistributionVersion is not null) traits.DistributionVersion = DistributionVersion;
-        if (Modules is not null) traits.Modules = Modules;
-        if (LogDir is not null) traits.LogDir = LogDir;
-        if (PrebuiltDataDir is not null) traits.PrebuiltDataDir = PrebuiltDataDir;
-        if (StagingDir is not null) traits.StagingDir = StagingDir;
-        traits.MinLogLevel = MinLogLevel;
-
-        _rime.Setup(ref traits);
-        _isSetup = true;
-        ThrowIfStopRequested();
-        RimeNotificationBridge.OnEngineSetup(_rime);
-        _rime.Initialize(ref traits);
-        ThrowIfStopRequested();
-
-        if (_rime.StartMaintenance(fullCheck: true))
-        {
-            _rime.JoinMaintenanceThread();
-        }
-        ThrowIfStopRequested();
-
-        var sessionId = _rime.CreateSession();
-        if (sessionId == 0)
-        {
-            var ex = new InvalidOperationException("Failed to create RIME session.");
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionFailed",
-                ErrorCategory.ResourceUnavailable, null));
-            return;
-        }
-        ThrowIfStopRequested();
-
-        var session = new RimeSession(sessionId);
-        WriteObject(session);
-
-        if (SetDefaultSession)
-        {
-            SessionState.PSVariable.Set("global:RimeDefaultSession", session);
-        }
-    }
-
-    private void CleanupFailedStart()
-    {
-        if (!_isSetup || _rime is null) return;
-
-        try
-        {
-            RimeNotificationBridge.OnEngineFinalizing(_rime);
-            _rime.Finalize1();
-        }
-        catch
-        {
-            // Preserve the original startup failure.
-        }
-    }
-
-    protected override void StopProcessing()
-    {
-        Volatile.Write(ref _stopRequested, 1);
-    }
-
-    public void Dispose()
-    {
-        _rime = null;
-    }
-
-    private void ThrowIfStopRequested()
-    {
-        if (Volatile.Read(ref _stopRequested) != 0)
-        {
-            throw new OperationCanceledException("Start-Rime was stopped.");
-        }
-    }
-
-    private string ResolvePath(string path)
-        => SessionState.Path.GetUnresolvedProviderPathFromPSPath(path);
-
-    private string? ResolveOptionalPath(string? path)
-    {
-        if (path is null || path.Length == 0)
-        {
-            return path;
-        }
-
-        return ResolvePath(path);
     }
 }
 
 /// <summary>
-/// Destroy the active RIME session and finalize the single engine lifecycle.
+/// Create and register one explicit session in the active lifecycle.
 /// </summary>
-[Cmdlet(VerbsLifecycle.Stop, "Rime")]
-[OutputType(typeof(void))]
-public sealed class StopRimeCmdlet : PSCmdlet, IDisposable
+[Cmdlet(VerbsCommon.New, "RimeSession")]
+[OutputType(typeof(RimeSession))]
+public sealed class NewRimeSessionCmdlet : RimeCmdlet
 {
-    private readonly object _finalizationSync = new();
-    private Rime? _rime;
-    private bool _isFinalized;
-    private bool _sessionDestroyed;
-
-    [Parameter(
-        Position = 0,
-        ValueFromPipeline = true
-    )]
-    public RimeSession? Session { get; set; }
-
-    protected override void BeginProcessing()
+    protected override void ProcessRecord()
     {
-        _rime = Rime.Instance();
-        Session ??= SessionState.PSVariable.GetValue("global:RimeDefaultSession") as RimeSession;
+        using var gate = AcquireNativeGate();
+        var rime = RimeProcessRuntime.RequireActive(this);
+        ThrowIfStopping();
+
+        UIntPtr nativeId;
+        try
+        {
+            nativeId = rime.CreateSession();
+        }
+        catch (Exception ex)
+        {
+            RimeProcessRuntime.ThrowError(
+                this,
+                ex,
+                "RimeSessionCreationFailed",
+                ErrorCategory.ResourceUnavailable,
+                null);
+            return;
+        }
+
+        if (nativeId == UIntPtr.Zero)
+        {
+            RimeProcessRuntime.ThrowError(
+                this,
+                new InvalidOperationException("librime did not create a session."),
+                "RimeSessionCreationFailed",
+                ErrorCategory.ResourceUnavailable,
+                null);
+            return;
+        }
+
+        RimeSession? session = null;
+        try
+        {
+            session = RimeProcessRuntime.RegisterSession(nativeId);
+            ThrowIfStopping();
+            WriteObject(session, enumerateCollection: false);
+        }
+        catch (Exception primaryFailure)
+        {
+            var cleanupFailures = new List<Exception>();
+            var destroyed = false;
+            try
+            {
+                destroyed = rime.DestroySession(nativeId);
+                if (!destroyed)
+                {
+                    cleanupFailures.Add(new InvalidOperationException(
+                        $"librime did not destroy session {nativeId.ToUInt64()} during rollback."));
+                }
+            }
+            catch (Exception cleanupFailure)
+            {
+                cleanupFailures.Add(cleanupFailure);
+            }
+
+            if (destroyed && session is not null)
+            {
+                RimeProcessRuntime.RemoveRegisteredSession(session);
+            }
+
+            if (cleanupFailures.Count != 0)
+            {
+                RimeProcessRuntime.RetainFaultedLifecycle(
+                    rime,
+                    RimeProcessRuntime.Bridge);
+                var diagnostic = new RimeLifecycleFailureInfo(
+                    RimeLifecycleOperation.NewSessionRollback,
+                    RimeLifecycleState.Faulted,
+                    primaryFailure,
+                    cleanupFailures);
+                RimeProcessRuntime.ThrowError(
+                    this,
+                    primaryFailure,
+                    "RimeSessionCreationFailed",
+                    primaryFailure is OperationCanceledException
+                        ? ErrorCategory.OperationStopped
+                        : ErrorCategory.ResourceUnavailable,
+                    diagnostic);
+                return;
+            }
+
+            if (primaryFailure is OperationCanceledException)
+            {
+                throw;
+            }
+
+            RimeProcessRuntime.ThrowError(
+                this,
+                primaryFailure,
+                "RimeSessionCreationFailed",
+                ErrorCategory.ResourceUnavailable,
+                session ?? (object)nativeId.ToUInt64());
+            return;
+        }
+
     }
+}
+
+/// <summary>
+/// Destroy one explicit session without changing the process lifecycle.
+/// </summary>
+[Cmdlet(VerbsCommon.Remove, "RimeSession")]
+[OutputType(typeof(void))]
+public sealed class RemoveRimeSessionCmdlet : RimeCmdlet
+{
+    [Parameter(Mandatory = true, ValueFromPipeline = true)]
+    [AllowNull]
+    public RimeSession? Session { get; set; }
 
     protected override void ProcessRecord()
     {
-        lock (_finalizationSync)
-        {
-            if (_isFinalized) return;
-            StopSession();
-        }
-    }
+        using var gate = AcquireNativeGate();
+        var session = RimeProcessRuntime.RequireSession(this, Session);
+        if (RimeProcessRuntime.IsGenuineDestroyedSession(session)) return;
 
-    private void StopSession()
-    {
-        if (_rime is null) return;
-        if (Session is null)
+        var rime = RimeProcessRuntime.ValidateSession(this, session);
+        ThrowIfStopping();
+
+        bool destroyed;
+        try
         {
-            var ex = new InvalidOperationException(
-                "No RIME session specified. Pipe a session from Start-Rime or use -Session.");
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionMissing",
-                ErrorCategory.InvalidOperation, null));
+            destroyed = rime.DestroySession(session.NativeId);
+        }
+        catch (Exception ex)
+        {
+            RimeProcessRuntime.ThrowError(
+                this,
+                ex,
+                "RimeSessionRemovalFailed",
+                ErrorCategory.ResourceUnavailable,
+                session);
             return;
         }
 
-        if (!_rime.DestroySession(Session.Id))
+        RimeProcessRuntime.RemoveRegisteredSession(session);
+        ThrowIfStopping();
+        if (!destroyed)
         {
-            var ex = new ArgumentException(
-                $"Session {Session.Id} is invalid or already destroyed.", nameof(Session));
-            ThrowTerminatingError(new ErrorRecord(ex, "RimeSessionInvalid",
-                ErrorCategory.InvalidArgument, Session));
-            return;
-        }
-        _sessionDestroyed = true;
-
-        var defaultSession = SessionState.PSVariable.GetValue(
-            "global:RimeDefaultSession") as RimeSession;
-        if (defaultSession?.Id == Session.Id)
-        {
-            SessionState.PSVariable.Remove("global:RimeDefaultSession");
-        }
-    }
-
-    protected override void EndProcessing()
-    {
-        FinalizeEngine();
-    }
-
-    protected override void StopProcessing()
-    {
-        FinalizeEngine();
-    }
-
-    public void Dispose()
-    {
-        FinalizeEngine();
-    }
-
-    private void FinalizeEngine()
-    {
-        lock (_finalizationSync)
-        {
-            if (_isFinalized || !_sessionDestroyed || _rime is null) return;
-            _isFinalized = true;
-
-            try
-            {
-                RimeNotificationBridge.OnEngineFinalizing(_rime);
-                _rime.Finalize1();
-            }
-            finally
-            {
-                _rime = null;
-                RimeEngineLifecycle.CompleteStop();
-            }
+            RimeProcessRuntime.ThrowError(
+                this,
+                new InvalidOperationException(
+                    $"librime did not destroy session {session.Id}."),
+                "RimeSessionRemovalFailed",
+                ErrorCategory.ResourceUnavailable,
+                session);
         }
     }
 }
 
-internal static class RimeEngineLifecycle
+/// <summary>
+/// Destroy all registered sessions and finalize the process-wide lifecycle.
+/// </summary>
+[Cmdlet(
+    VerbsLifecycle.Stop,
+    "Rime",
+    SupportsShouldProcess = true,
+    ConfirmImpact = ConfirmImpact.Medium)]
+[OutputType(typeof(void))]
+public sealed class StopRimeCmdlet : RimeCmdlet
 {
-    private static int s_isActive;
+    protected override void EndProcessing()
+    {
+        using var gate = AcquireNativeGate();
+        var state = RimeProcessRuntime.State;
+        if (state == RimeLifecycleState.Inactive) return;
+        if (state != RimeLifecycleState.Active && state != RimeLifecycleState.Faulted)
+        {
+            RimeProcessRuntime.ThrowError(
+                this,
+                new InvalidOperationException(
+                    $"The RIME lifecycle cannot be stopped from state {state}."),
+                "RimeLifecycleStopFailed",
+                ErrorCategory.InvalidOperation,
+                state);
+            return;
+        }
 
-    internal static bool TryBeginStart()
-        => Interlocked.CompareExchange(ref s_isActive, 1, 0) == 0;
+        if (!ShouldProcess("process RIME lifecycle", "Stop")) return;
+        ThrowIfStopping();
 
-    internal static void CompleteStop()
-        => Volatile.Write(ref s_isActive, 0);
+        var rime = RimeProcessRuntime.Rime;
+        if (rime is null)
+        {
+            var missingRuntime = new InvalidOperationException(
+                "The lifecycle cleanup state does not contain a native RIME API instance.");
+            RimeProcessRuntime.RetainFaultedLifecycle(null, RimeProcessRuntime.Bridge);
+            var missingDiagnostic = new RimeLifecycleFailureInfo(
+                RimeLifecycleOperation.Stop,
+                RimeLifecycleState.Faulted,
+                missingRuntime,
+                Array.Empty<Exception>());
+            RimeProcessRuntime.ThrowError(
+                this,
+                missingRuntime,
+                "RimeLifecycleStopFailed",
+                ErrorCategory.InvalidData,
+                missingDiagnostic);
+            return;
+        }
+
+        RimeProcessRuntime.BeginStopping();
+        var cleanupFailures = new List<Exception>();
+
+        foreach (var session in RimeProcessRuntime.Sessions.ToArray())
+        {
+            try
+            {
+                if (rime.DestroySession(session.NativeId))
+                {
+                    RimeProcessRuntime.RemoveRegisteredSession(session);
+                }
+                else
+                {
+                    cleanupFailures.Add(new InvalidOperationException(
+                        $"librime did not destroy session {session.Id}."));
+                }
+            }
+            catch (Exception ex)
+            {
+                cleanupFailures.Add(ex);
+            }
+        }
+
+        var finalized = false;
+        try
+        {
+            rime.Finalize1();
+            finalized = true;
+        }
+        catch (Exception ex)
+        {
+            cleanupFailures.Add(ex);
+        }
+
+        if (finalized)
+        {
+            RimeProcessRuntime.ResetInactive(invalidateSessions: true);
+        }
+        else
+        {
+            RimeProcessRuntime.RetainFaultedLifecycle(
+                rime,
+                RimeProcessRuntime.Bridge);
+        }
+
+        var cancellationFailure = StopToken.IsCancellationRequested
+            ? new OperationCanceledException("Stop-Rime was stopped.", StopToken)
+            : null;
+        if (cancellationFailure is null && cleanupFailures.Count == 0) return;
+
+        Exception primaryFailure;
+        IReadOnlyList<Exception> laterFailures;
+        if (cancellationFailure is not null)
+        {
+            primaryFailure = cancellationFailure;
+            laterFailures = cleanupFailures;
+        }
+        else
+        {
+            primaryFailure = cleanupFailures[0];
+            laterFailures = cleanupFailures.Skip(1).ToArray();
+        }
+
+        var diagnostic = new RimeLifecycleFailureInfo(
+            RimeLifecycleOperation.Stop,
+            RimeProcessRuntime.State,
+            primaryFailure,
+            laterFailures);
+        RimeProcessRuntime.ThrowError(
+            this,
+            primaryFailure,
+            "RimeLifecycleStopFailed",
+            primaryFailure is OperationCanceledException
+                ? ErrorCategory.OperationStopped
+                : ErrorCategory.ResourceUnavailable,
+            diagnostic);
+    }
 }

@@ -1,15 +1,33 @@
 namespace RimeSharp.PowerShell;
 
 /// <summary>
-/// Wraps a native RIME session ID for pipeline binding.
-/// Not constructable by user code — created by <c>Start-Rime</c>.
+/// Identifies a module-owned native RIME session.
 /// </summary>
 public sealed class RimeSession
 {
-    internal UIntPtr Id { get; }
+    private readonly object _generationToken;
+    private readonly object _ownerToken;
+    private int _destroyed;
 
-    internal RimeSession(UIntPtr id)
+    public ulong Id { get; }
+
+    internal object IdentityToken { get; } = new();
+    internal UIntPtr NativeId => new UIntPtr(Id);
+    internal bool IsDestroyed => Volatile.Read(ref _destroyed) != 0;
+
+    internal RimeSession(UIntPtr id, object generationToken, object ownerToken)
     {
-        Id = id;
+        Id = id.ToUInt64();
+        _generationToken = generationToken;
+        _ownerToken = ownerToken;
     }
+
+    internal bool IsFromGeneration(object generationToken)
+        => ReferenceEquals(_generationToken, generationToken);
+
+    internal bool IsOwnedBy(object ownerToken)
+        => ReferenceEquals(_ownerToken, ownerToken);
+
+    internal void MarkDestroyed()
+        => Interlocked.Exchange(ref _destroyed, 1);
 }

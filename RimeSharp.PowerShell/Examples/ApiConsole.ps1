@@ -1,106 +1,102 @@
-#requires -Version 5.1
-
 <#
 .SYNOPSIS
-    Runs an interactive API console for the RimeSharp.PowerShell module.
+    Runs a small interactive console against one explicit RIME session.
 
 .DESCRIPTION
-    Demonstrates the PowerShell cmdlets with a command loop modeled after
-    librime's rime_api_console and the RimeSharp.Test console application.
-
-    SharedDataDir and UserDataDir are resolved by Start-Rime from the current
-    PowerShell location. On Windows, set LIBRIME_LIB_DIR or add the directory
-    containing rime.dll to PATH before starting this script.
-
-.PARAMETER SharedDataDir
-    Directory containing shared RIME data.
-
-.PARAMETER UserDataDir
-    Directory containing user-specific RIME data.
-
-.PARAMETER AppName
-    Application name reported to librime.
-
-.EXAMPLE
-    $env:LIBRIME_LIB_DIR = 'C:\path\to\librime\bin'
-    pwsh .\RimeSharp.PowerShell\Examples\ApiConsole.ps1 `
-        -SharedDataDir .\shared `
-        -UserDataDir .\user
+    This example demonstrates the version 0.2 lifecycle contract. Start-Rime
+    owns the process lifecycle, while New-RimeSession and Remove-RimeSession
+    independently manage input contexts.
 #>
 
 [CmdletBinding()]
 param(
+    [string]$ModulePath = (Join-Path $PSScriptRoot '..\RimeSharp.PowerShell.psd1'),
     [string]$SharedDataDir = 'shared',
-
-    [string]$UserDataDir = 'user',
-
-    [string]$AppName = 'rime.console'
+    [string]$UserDataDir = 'user'
 )
 
-Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+Import-Module $ModulePath -Force
 
-$moduleDirectory = Split-Path -Parent $PSScriptRoot
-$moduleManifest = Join-Path $moduleDirectory 'RimeSharp.PowerShell.psd1'
+$traits = @{
+    AppName       = 'RimeSharp.PowerShell.ApiConsole'
+    SharedDataDir = $SharedDataDir
+    UserDataDir   = $UserDataDir
+}
 
-Import-Module -Name $moduleManifest -ErrorAction Stop
+function Show-ApiConsoleBanner {
+    Write-Host 'Enter a librime key sequence, or one of these commands:'
+    Write-Host '  :h, :help                      Show all commands'
+    Write-Host '  :q, :quit                      Exit'
+    Write-Host 'Enter :help to show the complete command list.'
+}
 
-function Write-ConsoleError {
+function Show-ApiConsoleHelp {
+    Write-Host 'Commands:'
+    Write-Host '  :print                         Show commit, status, and context'
+    Write-Host '  :input                         Show raw input'
+    Write-Host '  :schemas                       List schemas'
+    Write-Host '  :schema <id>                   Select a schema'
+    Write-Host '  :switcher <available|selected> List switcher schemas'
+    Write-Host '  :candidates                    List all candidates'
+    Write-Host '  :select <index>                Select from the current page'
+    Write-Host '  :highlight <index>             Highlight on the current page'
+    Write-Host '  :delete <index>                Delete by global index'
+    Write-Host '  :delete-page <index>           Delete from the current page'
+    Write-Host '  :prev                          Move to the previous page'
+    Write-Host '  :next                          Move to the next page'
+    Write-Host '  :option <name>                 Show a boolean option'
+    Write-Host '  :set-option <name> <on|off>    Set a boolean option'
+    Write-Host '  :toggle <name>                 Toggle a boolean option'
+    Write-Host '  :key <code> [mask]             Process one raw key event'
+    Write-Host '  :notifications                 Drain queued notifications'
+    Write-Host '  :reload                        Restart lifecycle and session'
+    Write-Host '  :h, :help                      Show this command list'
+    Write-Host '  :q, :quit                      Exit'
+}
+
+function ConvertTo-ZeroBasedIndex {
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$Message
+        [Parameter(Mandatory)]
+        [string]$Value
     )
 
-    $Host.UI.WriteErrorLine($Message)
+    $parsed = 0
+    if (-not [int]::TryParse($Value, [ref]$parsed) -or $parsed -lt 1) {
+        throw "Candidate index '$Value' must be a positive integer."
+    }
+
+    return $parsed - 1
 }
 
 function Show-RimeStatusSnapshot {
     param(
-        [Parameter(Mandatory = $true)]
-        [object]$Status
+        [Parameter(Mandatory)]
+        $Status
     )
 
-    Write-Host ("schema: {0} / {1}" -f $Status.SchemaId, $Status.SchemaName)
-
+    Write-Host ('schema: {0} / {1}' -f $Status.SchemaId, $Status.SchemaName)
     $flags = [System.Collections.Generic.List[string]]::new()
-    if ($Status.IsDisabled) {
-        $flags.Add('disabled')
-    }
-    if ($Status.IsComposing) {
-        $flags.Add('composing')
-    }
-    if ($Status.IsAsciiMode) {
-        $flags.Add('ascii')
-    }
-    if ($Status.IsFullShape) {
-        $flags.Add('full_shape')
-    }
-    if ($Status.IsSimplified) {
-        $flags.Add('simplified')
-    }
-    if ($Status.IsTraditional) {
-        $flags.Add('traditional')
-    }
-    if ($Status.IsAsciiPunct) {
-        $flags.Add('ascii_punct')
-    }
-
-    Write-Host ("status: {0}" -f ($flags -join ' '))
+    if ($Status.IsDisabled) { $flags.Add('disabled') }
+    if ($Status.IsComposing) { $flags.Add('composing') }
+    if ($Status.IsAsciiMode) { $flags.Add('ascii') }
+    if ($Status.IsFullShape) { $flags.Add('full_shape') }
+    if ($Status.IsSimplified) { $flags.Add('simplified') }
+    if ($Status.IsTraditional) { $flags.Add('traditional') }
+    if ($Status.IsAsciiPunct) { $flags.Add('ascii_punct') }
+    Write-Host ('status: {0}' -f ($flags -join ' '))
 }
 
 function Show-RimeCompositionSnapshot {
     param(
-        [Parameter(Mandatory = $true)]
-        [object]$Composition
+        [Parameter(Mandatory)]
+        $Composition
     )
 
-    if ($null -eq $Composition.Preedit) {
-        return
-    }
+    if ($null -eq $Composition.Preedit) { return }
 
     $preedit = $Composition.Preedit
     $line = [System.Text.StringBuilder]::new()
-
     for ($i = 0; $i -le $preedit.Length; $i++) {
         if ($Composition.SelectionStart -lt $Composition.SelectionEnd) {
             if ($i -eq $Composition.SelectionStart) {
@@ -114,34 +110,29 @@ function Show-RimeCompositionSnapshot {
         if ($i -eq $Composition.CursorPosition) {
             [void]$line.Append('|')
         }
-
         if ($i -lt $preedit.Length) {
             [void]$line.Append($preedit[$i])
         }
     }
 
-    Write-Host ($line.ToString())
+    Write-Host $line.ToString()
 }
 
 function Show-RimeMenuSnapshot {
     param(
-        [Parameter(Mandatory = $true)]
-        [object]$Context
+        [Parameter(Mandatory)]
+        $Context
     )
 
     $menu = $Context.Menu
-    if ($menu.NumCandidates -eq 0) {
-        return
-    }
+    if ($menu.NumCandidates -eq 0) { return }
 
     $pageMarker = if ($menu.IsLastPage) { '$' } else { ' ' }
-    Write-Host ("page: {0}{1} (of size {2})" -f
+    Write-Host ('page: {0}{1} (of size {2})' -f
         ($menu.PageNo + 1), $pageMarker, $menu.PageSize)
-
     for ($i = 0; $i -lt $menu.Candidates.Count; $i++) {
         $candidate = $menu.Candidates[$i]
         $label = $i + 1
-
         if ($i -lt $Context.SelectLabels.Count -and
             -not [string]::IsNullOrEmpty($Context.SelectLabels[$i])) {
             $label = $Context.SelectLabels[$i]
@@ -153,20 +144,19 @@ function Show-RimeMenuSnapshot {
         else {
             " $($candidate.Comment)"
         }
-
         if ($i -eq $menu.HighlightedCandidateIndex) {
-            Write-Host ("{0}. [{1}]{2}" -f $label, $candidate.Text, $comment)
+            Write-Host ('{0}. [{1}]{2}' -f $label, $candidate.Text, $comment)
         }
         else {
-            Write-Host ("{0}.  {1}{2}" -f $label, $candidate.Text, $comment)
+            Write-Host ('{0}.  {1}{2}' -f $label, $candidate.Text, $comment)
         }
     }
 }
 
 function Show-RimeContextSnapshot {
     param(
-        [Parameter(Mandatory = $true)]
-        [object]$Context
+        [Parameter(Mandatory)]
+        $Context
     )
 
     if ($Context.Composition.Length -gt 0 -or
@@ -180,455 +170,254 @@ function Show-RimeContextSnapshot {
     Show-RimeMenuSnapshot -Context $Context
 }
 
-function Show-RimeResponse {
+function Show-RimeNotification {
     param(
-        [Parameter(Mandatory = $true)]
-        [object]$Response
+        [Parameter(Mandatory)]
+        $Notification
     )
 
-    if (-not [string]::IsNullOrEmpty($Response.Commit)) {
-        Write-Host ("commit: {0}" -f $Response.Commit)
-    }
-
-    Show-RimeStatusSnapshot -Status $Response.Status
-    Show-RimeContextSnapshot -Context $Response.Context
+    Write-Host ('message: [{0}] [{1}] {2}' -f
+        $Notification.SessionId,
+        $Notification.MessageType,
+        $Notification.MessageValue)
 }
 
-function Show-RimeState {
+function Show-RimeOperationResult {
     param(
-        [Parameter(Mandatory = $true)]
-        [object]$Session
+        [Parameter(Mandatory)]
+        $Result
     )
 
-    $commit = Get-RimeCommit -Session $Session
-    $status = Get-RimeStatus -Session $Session
-    $context = Get-RimeContext -Session $Session
-
-    if (-not [string]::IsNullOrEmpty($commit)) {
-        Write-Host ("commit: {0}" -f $commit)
+    if ($null -ne $Result.PSObject.Properties['Handled']) {
+        Write-Host ('handled: {0}' -f $Result.Handled)
     }
-
-    Show-RimeStatusSnapshot -Status $status
-    Show-RimeContextSnapshot -Context $context
+    if ($null -ne $Result.Commit) {
+        Write-Host ('commit: {0}' -f $Result.Commit)
+    }
+    Write-Host ('input: {0}' -f $Result.Input)
+    Show-RimeStatusSnapshot -Status $Result.Status
+    Show-RimeContextSnapshot -Context $Result.Context
+    foreach ($notification in $Result.Notifications) {
+        Show-RimeNotification -Notification $notification
+    }
 }
 
-function Receive-AndShowRimeNotification {
-    $notifications = @(Receive-RimeNotification)
-    foreach ($notification in $notifications) {
-        Write-Host ("message: [{0}] [{1}] [{2}]" -f
-            $notification.SessionId,
+function Show-RimeCurrentState {
+    param(
+        [Parameter(Mandatory)]
+        $Session
+    )
+
+    $commit = Receive-RimeCommit -Session $Session
+    if ($null -ne $commit) {
+        Write-Host ('commit: {0}' -f $commit)
+    }
+    Write-Host ('input: {0}' -f (Get-RimeInput -Session $Session))
+    Show-RimeStatusSnapshot -Status (Get-RimeStatus -Session $Session)
+    Show-RimeContextSnapshot -Context (Get-RimeContext -Session $Session)
+}
+
+$source = Get-RimeNotificationSource
+$eventParameters = @{
+    InputObject = $source
+    EventName   = 'NotificationReceived'
+    Action      = {
+        $notification = $EventArgs.Notification
+        Write-Host (
+            '[{0}] {1}: {2}' -f
+            $EventArgs.Origin,
             $notification.MessageType,
             $notification.MessageValue)
+    }
+}
+$subscription = Register-ObjectEvent @eventParameters
 
-        if (-not [string]::IsNullOrEmpty($notification.OptionName) -and
-            $null -ne $notification.OptionState -and
-            $null -ne $notification.Session) {
-            try {
-                $label = Get-RimeStateLabel `
-                    -Name $notification.OptionName `
-                    -State ([bool]$notification.OptionState) `
-                    -Session $notification.Session
+$session = $null
+try {
+    Start-Rime @traits
+    $session = New-RimeSession
 
-                if (-not [string]::IsNullOrEmpty($label)) {
-                    Write-Host ("updated option: {0} = {1} // {2}" -f
-                        $notification.OptionName,
-                        $notification.OptionState,
-                        $label)
+    Show-ApiConsoleBanner
+
+    while ($true) {
+        $line = Read-Host 'rime'
+        try {
+            if ($line -eq ':q' -or $line -eq ':quit') {
+                return
+            }
+            if ($line -eq ':h' -or $line -eq ':help') {
+                Show-ApiConsoleHelp
+                continue
+            }
+            if ($line -eq ':print') {
+                Show-RimeCurrentState -Session $session
+                continue
+            }
+            if ($line -eq ':input') {
+                Write-Host (Get-RimeInput -Session $session)
+                continue
+            }
+            if ($line -eq ':notifications') {
+                foreach ($notification in @(Receive-RimeNotification)) {
+                    Show-RimeNotification -Notification $notification
                 }
+                continue
             }
-            catch {
-                Write-ConsoleError (
-                    "Unable to resolve the option state label: {0}" -f
-                    $_.Exception.Message)
+            if ($line -eq ':schemas') {
+                Get-RimeSchema -Session $session |
+                    Format-Table SchemaId, Name, IsCurrent -AutoSize
+                continue
             }
-        }
-    }
-}
-
-function ConvertTo-ZeroBasedIndex {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Value,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Description
-    )
-
-    $parsed = 0
-    if (-not [int]::TryParse($Value, [ref]$parsed) -or $parsed -lt 1) {
-        Write-ConsoleError (
-            "Invalid {0}: '{1}'. Enter a positive integer." -f
-            $Description,
-            $Value)
-        return $null
-    }
-
-    return $parsed - 1
-}
-
-function Show-ApiConsoleHelp {
-    Write-Host @'
-Commands:
-  help
-      Show this command list.
-  print
-      Print the current commit, status, composition, and candidate page.
-  print schema list
-      List schemas and mark the current schema.
-  print available schemas
-      List schemas available through the RIME switcher.
-  print selected schemas
-      List schemas selected in the RIME switcher.
-  select schema SCHEMA_ID
-      Select a schema.
-  print candidate list
-      Enumerate all candidates using one-based display indexes.
-  select candidate INDEX
-      Select a candidate on the current page.
-  delete INDEX
-      Delete a candidate by its global display index.
-  delete on current page INDEX
-      Delete a candidate by its current-page display index.
-  highlight candidate INDEX
-      Highlight a candidate on the current page.
-  prev
-      Move to the previous candidate page.
-  next
-      Move to the next candidate page.
-  get option OPTION
-      Print the boolean value of an option.
-  set option OPTION
-      Enable an option.
-  set option !OPTION
-      Disable an option.
-  key event KEY_CODE [MASK]
-      Send a raw key event and optional modifier mask.
-  synchronize
-      Report that user-data synchronization is not exposed by this module.
-  reload
-      Recreate the RIME engine and session.
-  exit
-      Stop RIME and leave the console.
-
-Any other line is passed to Send-RimeKey as a key sequence. An empty line sends
-a carriage return, matching librime's rime_api_console behavior.
-'@
-}
-
-function Start-ApiConsoleSession {
-    Write-Host 'initializing...'
-    $startedSession = Start-Rime `
-        -AppName $AppName `
-        -SharedDataDir $SharedDataDir `
-        -UserDataDir $UserDataDir
-    Write-Host 'ready.'
-    return $startedSession
-}
-
-function Invoke-ApiConsoleCommand {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Line,
-
-        [Parameter(Mandatory = $true)]
-        [object]$Session
-    )
-
-    switch -Regex ($Line) {
-        '^help$' {
-            Show-ApiConsoleHelp
-            return $true
-        }
-
-        '^print$' {
-            Show-RimeState -Session $Session
-            return $true
-        }
-
-        '^print schema list$' {
-            $schemas = @(Get-RimeSchema -Session $Session)
-            Write-Host 'schema list:'
-
-            for ($i = 0; $i -lt $schemas.Count; $i++) {
-                $currentMarker = if ($schemas[$i].IsCurrent) { '*' } else { ' ' }
-                Write-Host ("{0}{1}. {2} [{3}]" -f
-                    $currentMarker,
-                    ($i + 1),
-                    $schemas[$i].SchemaId,
-                    $schemas[$i].Name)
+            if ($line -match '^:schema\s+(.+?)\s*$') {
+                Set-RimeSchema -Session $session -SchemaId $Matches[1]
+                Show-RimeCurrentState -Session $session
+                continue
             }
-
-            $current = $schemas | Where-Object IsCurrent | Select-Object -First 1
-            if ($null -ne $current) {
-                Write-Host ("current schema: [{0}]" -f $current.SchemaId)
-            }
-            return $true
-        }
-
-        '^print available schemas$' {
-            $schemas = @(Get-RimeSwitcherSchema -Available)
-            Write-Host 'available schemas:'
-            for ($i = 0; $i -lt $schemas.Count; $i++) {
-                Write-Host ("{0}. {1} [{2}]" -f
-                    ($i + 1),
-                    $schemas[$i].SchemaId,
-                    $schemas[$i].Name)
-            }
-            return $true
-        }
-
-        '^print selected schemas$' {
-            $schemas = @(Get-RimeSwitcherSchema -Selected)
-            Write-Host 'selected schemas:'
-            for ($i = 0; $i -lt $schemas.Count; $i++) {
-                Write-Host ("{0}. {1} [{2}]" -f
-                    ($i + 1),
-                    $schemas[$i].SchemaId,
-                    $schemas[$i].Name)
-            }
-            return $true
-        }
-
-        '^select schema (.+)$' {
-            $schemaId = $Matches[1]
-            Set-RimeSchema -SchemaId $schemaId -Session $Session
-            Write-Host ("selected schema: [{0}]" -f $schemaId)
-            Show-RimeState -Session $Session
-            return $true
-        }
-
-        '^print candidate list$' {
-            $candidates = @(Get-RimeCandidate -Session $Session)
-            if ($candidates.Count -eq 0) {
-                Write-Host 'no candidates.'
-                return $true
-            }
-
-            foreach ($candidate in $candidates) {
-                $comment = if ([string]::IsNullOrEmpty($candidate.Comment)) {
-                    ''
+            if ($line -match '^:switcher\s+(available|selected)\s*$') {
+                if ($Matches[1] -eq 'available') {
+                    Get-RimeSwitcherSchema -Available |
+                        Format-Table SchemaId, Name -AutoSize
                 }
                 else {
-                    " ($($candidate.Comment))"
+                    Get-RimeSwitcherSchema -Selected |
+                        Format-Table SchemaId, Name -AutoSize
                 }
-
-                Write-Host ("{0}. {1}{2}" -f
-                    ($candidate.Index + 1),
-                    $candidate.Text,
-                    $comment)
+                continue
             }
-            return $true
-        }
-
-        '^select candidate (.+)$' {
-            $index = ConvertTo-ZeroBasedIndex `
-                -Value $Matches[1] `
-                -Description 'candidate index'
-            if ($null -ne $index) {
+            if ($line -eq ':candidates') {
+                $candidates = @(Get-RimeCandidate -Session $session)
+                if ($candidates.Count -eq 0) {
+                    Write-Host 'no candidates.'
+                }
+                else {
+                    foreach ($candidate in $candidates) {
+                        $comment = if ([string]::IsNullOrEmpty(
+                            $candidate.Comment)) {
+                            ''
+                        }
+                        else {
+                            " ($($candidate.Comment))"
+                        }
+                        Write-Host ('{0}. {1}{2}' -f
+                            ($candidate.Index + 1),
+                            $candidate.Text,
+                            $comment)
+                    }
+                }
+                continue
+            }
+            if ($line -match '^:select\s+(\S+)\s*$') {
+                $index = ConvertTo-ZeroBasedIndex -Value $Matches[1]
                 Select-RimeCandidate `
+                    -Session $session `
                     -Index $index `
-                    -OnCurrentPage `
-                    -Session $Session
-                Show-RimeState -Session $Session
+                    -OnCurrentPage
+                Show-RimeCurrentState -Session $session
+                continue
             }
-            return $true
-        }
-
-        '^delete on current page (.+)$' {
-            $index = ConvertTo-ZeroBasedIndex `
-                -Value $Matches[1] `
-                -Description 'candidate index'
-            if ($null -ne $index) {
-                Remove-RimeCandidate `
-                    -Index $index `
-                    -OnCurrentPage `
-                    -Session $Session `
-                    -Confirm:$false
-                Show-RimeState -Session $Session
-            }
-            return $true
-        }
-
-        '^delete (.+)$' {
-            $index = ConvertTo-ZeroBasedIndex `
-                -Value $Matches[1] `
-                -Description 'candidate index'
-            if ($null -ne $index) {
-                Remove-RimeCandidate `
-                    -Index $index `
-                    -Session $Session `
-                    -Confirm:$false
-                Show-RimeState -Session $Session
-            }
-            return $true
-        }
-
-        '^highlight candidate (.+)$' {
-            $index = ConvertTo-ZeroBasedIndex `
-                -Value $Matches[1] `
-                -Description 'candidate index'
-            if ($null -ne $index) {
+            if ($line -match '^:highlight\s+(\S+)\s*$') {
+                $index = ConvertTo-ZeroBasedIndex -Value $Matches[1]
                 Invoke-RimeHighlight `
+                    -Session $session `
+                    -Index $index `
+                    -OnCurrentPage
+                Show-RimeCurrentState -Session $session
+                continue
+            }
+            if ($line -match '^:delete-page\s+(\S+)\s*$') {
+                $index = ConvertTo-ZeroBasedIndex -Value $Matches[1]
+                Remove-RimeCandidate `
+                    -Session $session `
                     -Index $index `
                     -OnCurrentPage `
-                    -Session $Session
-                Show-RimeState -Session $Session
+                    -Confirm:$false
+                Show-RimeCurrentState -Session $session
+                continue
             }
-            return $true
-        }
-
-        '^set option (.+)$' {
-            $option = $Matches[1]
-            $isOn = $true
-
-            if ($option.StartsWith('!')) {
-                $isOn = $false
-                $option = $option.Substring(1)
+            if ($line -match '^:delete\s+(\S+)\s*$') {
+                $index = ConvertTo-ZeroBasedIndex -Value $Matches[1]
+                Remove-RimeCandidate `
+                    -Session $session `
+                    -Index $index `
+                    -Confirm:$false
+                Show-RimeCurrentState -Session $session
+                continue
             }
-
-            if ([string]::IsNullOrWhiteSpace($option)) {
-                Write-ConsoleError 'An option name is required.'
-                return $true
+            if ($line -eq ':prev' -or $line -eq ':next') {
+                $direction = if ($line -eq ':prev') { 'Previous' } else { 'Next' }
+                Set-RimePage -Session $session -Direction $direction
+                Show-RimeCurrentState -Session $session
+                continue
             }
-
-            Set-RimeOption `
-                -Name $option `
-                -Value $isOn `
-                -Session $Session
-            Write-Host ("{0} set {1}." -f
-                $option,
-                $(if ($isOn) { 'on' } else { 'off' }))
-            return $true
-        }
-
-        '^get option (.+)$' {
-            $option = $Matches[1]
-            $value = Get-RimeOption -Name $option -Session $Session
-            Write-Host ("{0} = {1}" -f $option, $value)
-            return $true
-        }
-
-        '^prev$' {
-            Set-RimePage -Direction Previous -Session $Session
-            Show-RimeState -Session $Session
-            return $true
-        }
-
-        '^next$' {
-            Set-RimePage -Direction Next -Session $Session
-            Show-RimeState -Session $Session
-            return $true
-        }
-
-        '^key event (-?\d+)(?:\s+(-?\d+))?$' {
-            $keyCode = [int]$Matches[1]
-            $mask = if ($Matches.ContainsKey(2)) {
-                [int]$Matches[2]
+            if ($line -match '^:option\s+(\S+)\s*$') {
+                $optionName = $Matches[1]
+                Write-Host ('{0} = {1}' -f
+                    $optionName,
+                    (Get-RimeOption -Session $session -Name $optionName))
+                continue
             }
-            else {
-                0
+            if ($line -match '^:set-option\s+(\S+)\s+(on|off)\s*$') {
+                $optionName = $Matches[1]
+                $optionValue = $Matches[2] -eq 'on'
+                Set-RimeOption `
+                    -Session $session `
+                    -Name $optionName `
+                    -Value $optionValue
+                Write-Host ('{0} set {1}.' -f $optionName, $Matches[2])
+                continue
             }
-
-            $handled = Send-RimeKeyEvent `
-                -KeyCode $keyCode `
-                -Mask $mask `
-                -Session $Session
-            Write-Host ("handled: {0}" -f $handled)
-            if ($handled) {
-                Show-RimeState -Session $Session
+            if ($line -match '^:toggle\s+(\S+)\s*$') {
+                $optionName = $Matches[1]
+                $optionValue = -not (
+                    Get-RimeOption -Session $session -Name $optionName)
+                Set-RimeOption `
+                    -Session $session `
+                    -Name $optionName `
+                    -Value $optionValue
+                Write-Host ('{0} = {1}' -f $optionName, $optionValue)
+                continue
             }
-            return $true
-        }
-
-        '^synchronize$' {
-            Write-ConsoleError (
-                'User-data synchronization is not exposed by ' +
-                'RimeSharp.PowerShell.')
-            return $true
-        }
-
-        '^reload$' {
-            $script:reloadRequested = $true
-            return $true
-        }
-
-        '^exit$' {
-            $script:exitRequested = $true
-            return $true
-        }
-    }
-
-    return $false
-}
-
-$script:exitRequested = $false
-$script:reloadRequested = $false
-$session = $null
-
-Register-RimeNotification
-
-try {
-    $session = Start-ApiConsoleSession
-    Receive-AndShowRimeNotification
-    Show-ApiConsoleHelp
-
-    while (-not $script:exitRequested) {
-        Write-Host 'rime> ' -NoNewline
-        $line = [Console]::ReadLine()
-
-        if ($null -eq $line) {
-            break
-        }
-
-        if ($line.Length -eq 0) {
-            $line = "`r"
-        }
-
-        try {
-            $handled = Invoke-ApiConsoleCommand `
-                -Line $line `
-                -Session $session
-
-            Receive-AndShowRimeNotification
-
-            if ($script:reloadRequested) {
-                $script:reloadRequested = $false
-                Stop-Rime -Session $session
+            if ($line -match '^:key\s+(-?\d+)(?:\s+(-?\d+))?\s*$') {
+                $mask = if ($Matches[2]) { [int]$Matches[2] } else { 0 }
+                $result = Send-RimeKeyEvent `
+                    -Session $session `
+                    -KeyCode ([int]$Matches[1]) `
+                    -Mask $mask
+                Show-RimeOperationResult -Result $result
+                continue
+            }
+            if ($line -eq ':reload') {
+                Remove-RimeSession -Session $session
                 $session = $null
-                try {
-                    $session = Start-ApiConsoleSession
-                }
-                catch {
-                    $script:exitRequested = $true
-                    throw
-                }
-                Receive-AndShowRimeNotification
+                Stop-Rime -Confirm:$false
+                Start-Rime @traits
+                $session = New-RimeSession
+                Show-RimeCurrentState -Session $session
+                continue
+            }
+            if ($line.StartsWith(':', [StringComparison]::Ordinal)) {
+                Write-Warning "Unknown command '$line'. Enter :help for commands."
                 continue
             }
 
-            if ($handled) {
-                continue
+            if ($line.Length -eq 0) {
+                $line = "`r"
             }
-
-            $response = Send-RimeKey `
-                -Sequence $line `
-                -Session $session
-            Show-RimeResponse -Response $response
-            Receive-AndShowRimeNotification
+            $result = Send-RimeKey -Session $session -Sequence $line
+            Show-RimeOperationResult -Result $result
         }
         catch {
-            Write-ConsoleError $_.Exception.Message
+            if ($null -eq $session) { throw }
+            Write-Warning $_.Exception.Message
         }
     }
 }
 finally {
     if ($null -ne $session) {
-        try {
-            Stop-Rime -Session $session
-        }
-        catch {
-            Write-ConsoleError (
-                "Failed to stop RIME cleanly: {0}" -f $_.Exception.Message)
-        }
+        Remove-RimeSession -Session $session -ErrorAction Continue
     }
+
+    Stop-Rime -Confirm:$false -ErrorAction Continue
+    Unregister-Event -SubscriptionId $subscription.Id -ErrorAction SilentlyContinue
+    Remove-Job -Id $subscription.Id -Force -ErrorAction SilentlyContinue
 }

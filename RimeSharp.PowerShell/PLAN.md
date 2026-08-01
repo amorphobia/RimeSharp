@@ -2,7 +2,8 @@
 
 ## Approval Status
 
-**Status: Approved on 2026-08-01.**
+**Status: Approved on 2026-08-01; snapshot-failure scope, accepted config
+iterator risk, and initial native-shim scope amended on 2026-08-01.**
 
 This document records the design decisions agreed before implementation. It is
 the approved implementation contract for version 0.2. Implementation work is
@@ -626,8 +627,13 @@ consume commit text or snapshot state from another session.
 
 `Handled = false` is a normal result, not an error. No unread commit is
 represented by `Commit = null`; empty raw input is `Input = ""`.
-`Status`, `Context`, and `Notifications` are non-null. A required snapshot
-failure is terminating and does not emit a partial result.
+`Status`, `Context`, and `Notifications` are non-null. If a managed snapshot
+getter throws or conversion to a managed snapshot fails, the operation is
+terminating and does not emit a partial result. The existing RimeSharp
+`GetStatus` and `GetContext` wrappers intentionally do not expose the native
+boolean result. A non-throwing wrapper return is therefore materialized,
+including when its fields are empty; version 0.2 does not attempt to infer a
+native `false` result from snapshot contents.
 
 Native `get_commit` consumes unread commit text. The managed result retains its
 copy and can be read repeatedly.
@@ -887,10 +893,21 @@ The snapshot is caller-owned and may be mutated without affecting librime.
 
 ### Atomic Failure
 
-Materialization is all-or-nothing. It accumulates internal read status so that
-all opened list/map iterators can be ended, closes the native config in a
-`finally` path, and only emits output after the complete shape succeeds.
-No partial map or list is written.
+Materialization is all-or-nothing from the PowerShell pipeline perspective. It
+accumulates internal read status so that ordinary missing-scalar and nested
+getter failures do not escape the callbacks supplied to `RimeConfig.GetList`
+or `RimeConfig.GetMap`. It closes the native config in a `finally` path and
+only emits output after the complete shape succeeds. No partial map or list is
+written.
+
+There is a known upstream exception-safety risk in the existing
+`RimeConfig.GetList` and `RimeConfig.GetMap` wrappers: after a successful
+`ConfigBeginList` or `ConfigBeginMap`, an exception from `ConfigNext`, iterator
+field access, the supplied callback, or managed collection insertion can skip
+the wrapper's trailing `ConfigEnd` call. Version 0.2 assumes those iterator
+operations do not throw after begin. Fixing the wrappers to use `try/finally`
+is tracked as upstream RimeSharp work. This accepted risk is documented but
+does not block the PowerShell 0.2 release.
 
 A materialization error contains:
 
@@ -924,6 +941,13 @@ RimeConfigMaterializationFailed
 RimeKeySequenceFailed
 RimeSnapshotFailed
 ```
+
+`RimeSnapshotFailed` applies when a managed status or context getter throws, or
+when conversion of its returned native structure to a managed snapshot fails.
+It does not represent an unobservable native `false` result from `get_status`
+or `get_context`; the existing RimeSharp wrappers intentionally discard those
+boolean results, and the PowerShell layer does not infer failure from empty
+snapshot fields.
 
 Standard .NET exception types and appropriate `ErrorCategory` values are used.
 Inner exceptions are preserved. `TargetObject` contains the relevant session,
@@ -1056,7 +1080,16 @@ Implementation starts only after explicit approval of this document.
 7. Update exports, help, examples, manifest version, and release notes.
 8. Add unit tests for pure managed behavior and native integration scenarios.
 
-Required integration scenarios include:
+The integration scenario inventory includes:
+
+The ordinary native runner and managed tests cover normal behavior and
+non-injected failures. The initial executable native shim is limited to startup
+cancellation with successful rollback, failed new-session cancellation cleanup
+and Faulted recovery, process-wide native-gate serialization, process-wide
+RimeConfigShape accelerator lifetime, and deployment false-result cleanup.
+NativeScenarioMatrix.md identifies those automated scenarios and the remaining
+failure-injection inventory. The deferred shim scenarios are future test
+expansion and do not block the initial version 0.2 release.
 
 - default and full maintenance startup with zero sessions;
 - failure and cancellation at safe startup boundaries beginning with the first
